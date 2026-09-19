@@ -1,0 +1,20 @@
+# Filing PDFs the app downloads (can be 100+ MB; re-downloaded on demand)
+downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Streamlit secrets (not used by this app, but never commit them)
+.streamlit/secrets.toml
+
+# Editor / assistant tooling and OS files
+.claude/
+.agents/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

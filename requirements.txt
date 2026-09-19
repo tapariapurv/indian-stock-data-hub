@@ -1,0 +1,9 @@
+# Python 3.10 or newer.  Install with:  pip install -r requirements.txt
+streamlit>=1.60          # UI (uses recent layout/metric features)
+pandas>=2.2
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.0                # HTML tables + RSS/XML parsing
+pdfplumber>=0.11         # reads numbers out of filing PDFs
+openpyxl>=3.1            # Excel export
+python-docx>=1.1         # Word export

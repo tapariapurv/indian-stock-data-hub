@@ -1,0 +1,460 @@
+<!doctype html>
+<!-- Source for static/user_guide.pdf (the guide linked from the app's sidebar).
+     After editing, rebuild the PDF from the project folder with Google Chrome:
+       macOS:   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --no-pdf-header-footer \
+                  --virtual-time-budget=8000 --print-to-pdf=static/user_guide.pdf docs/user_guide.html
+       Windows: "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --no-pdf-header-footer ^
+                  --virtual-time-budget=8000 --print-to-pdf=static\user_guide.pdf docs\user_guide.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Indian Stock Data Hub: User guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 18mm 18mm 20mm;
+          @bottom-left { content: "Indian Stock Data Hub · User guide"; font: 8pt Inter, sans-serif; color: #8A8E97; }
+          @bottom-right { content: counter(page); font: 8pt Inter, sans-serif; color: #8A8E97; } }
+  @page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
+  :root { --ink: #1C1F26; --muted: #5E636E; --accent: #1F4E79; --line: #E3E0D8; --paper: #F6F4EF; --green: #1F7A4D; --red: #B4382F; --amber: #A8620A; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.55 Inter, "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1, h2, h3 { font-family: "Source Serif 4", Georgia, serif; font-weight: 600; line-height: 1.2; color: var(--ink); }
+  h1 { font-size: 30pt; margin: 0 0 8pt; letter-spacing: -0.01em; }
+  h2 { font-size: 18pt; margin: 0 0 4pt; break-after: avoid; }
+  h3 { font-size: 12pt; margin: 16pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 8pt; }
+  a { color: var(--accent); text-decoration: none; }
+  code, pre, kbd { font-family: "JetBrains Mono", Menlo, Consolas, monospace; font-size: 8.8pt; font-variant-ligatures: none; }
+  code { background: var(--paper); padding: 1pt 4pt; border-radius: 3pt; }
+  kbd { border: 1px solid #CFCBC1; border-bottom-width: 2px; border-radius: 3pt; padding: 0 4pt; background: #fff; }
+  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 6pt; padding: 7pt 10pt; margin: 4pt 0 10pt; white-space: pre-wrap; break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  pre .c { color: #8A8E97; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin-bottom: 3pt; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 9.5pt; break-inside: avoid; }
+  th { text-align: left; font-weight: 600; background: var(--paper); border-bottom: 1px solid var(--line); padding: 5pt 7pt; }
+  td { border-bottom: 1px solid var(--line); padding: 5pt 7pt; vertical-align: top; }
+  img { max-width: 100%; border: 1px solid var(--line); border-radius: 6pt; display: block; }
+  figure { margin: 8pt 0 12pt; break-inside: avoid; }
+  figcaption { font-size: 8.5pt; color: var(--muted); margin-top: 4pt; }
+  .chapter { break-before: page; }
+  .kicker { font-size: 8pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 2pt; }
+  .intro { color: var(--muted); font-size: 11pt; margin-bottom: 10pt; padding-bottom: 8pt; border-bottom: 1px solid var(--line); }
+  .note { border-left: 3px solid var(--accent); background: #EEF3F8; padding: 7pt 10pt; border-radius: 0 6pt 6pt 0; margin: 8pt 0 12pt; break-inside: avoid; }
+  .note.warn { border-color: var(--amber); background: #FBF5EC; }
+  .note.good { border-color: var(--green); background: #EDF6F0; }
+  .step { display: grid; grid-template-columns: 22pt 1fr; gap: 10pt; margin: 9pt 0; }
+  .num { width: 22pt; height: 22pt; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 600; font-size: 10pt; display: flex; align-items: center; justify-content: center; margin-top: 1pt; }
+  .step h3 { margin-top: 2pt; }
+  .os { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; break-inside: avoid; }
+  .os > div { border: 1px solid var(--line); border-radius: 8pt; padding: 8pt 10pt; }
+  .os h4 { margin: 0 0 4pt; font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .os pre { margin-bottom: 4pt; }
+  .tag { display: inline-block; font-size: 8pt; font-weight: 600; padding: 1pt 6pt; border-radius: 99pt; white-space: nowrap; }
+  .tag.best { background: #E5F2EA; color: var(--green); }
+  .tag.low { background: #F7E9E7; color: var(--red); }
+  .flow { display: flex; gap: 6pt; align-items: stretch; margin: 10pt 0 14pt; break-inside: avoid; }
+  .flow > div { flex: 1; border: 1px solid var(--line); border-radius: 8pt; padding: 7pt 8pt; background: #fff; font-size: 8.8pt; }
+  .flow b { display: block; font-size: 9.5pt; color: var(--accent); margin-bottom: 2pt; }
+  .flow .arrow { flex: 0 0 10pt; border: 0; padding: 0; align-self: center; color: var(--muted); font-size: 12pt; background: none; }
+  .cover { height: 245mm; display: flex; flex-direction: column; }
+  .cover .top { border-bottom: 3px solid var(--accent); padding-bottom: 14pt; margin-top: 30mm; }
+  .cover .eyebrow { font-size: 9pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 10pt; }
+  .cover .lede { font-size: 12.5pt; color: var(--muted); max-width: 145mm; margin: 0; }
+  .toc { margin-top: 16mm; columns: 2; column-gap: 12mm; }
+  .toc div { break-inside: avoid; padding: 5pt 0; border-bottom: 1px solid var(--line); font-size: 10pt; }
+  .toc span { color: var(--accent); font-weight: 600; display: inline-block; width: 18pt; }
+  .cover .bottom { margin-top: auto; font-size: 9pt; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+  .card { border: 1px solid var(--line); border-radius: 8pt; padding: 9pt 11pt; break-inside: avoid; }
+  .card h3 { margin-top: 0; }
+  dl { margin: 0; columns: 2; column-gap: 12mm; }
+  dl div { break-inside: avoid; margin-bottom: 7pt; }
+  dt { font-weight: 600; }
+  dd { margin: 0; color: var(--muted); font-size: 9.5pt; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover">
+  <div class="top">
+    <div class="eyebrow">User guide</div>
+    <h1>Indian Stock Data Hub</h1>
+    <p class="lede">A free, open-source research desk for Indian listed companies. Enter a few ticker symbols and get each company's key numbers, quarterly trends, latest filings, recent news and a plain-English analysis, then export it all to Excel and Word. The optional AI runs entirely on your own computer.</p>
+  </div>
+  <div class="toc">
+    <div><span>1</span>What the app does</div>
+    <div><span>2</span>Before you start</div>
+    <div><span>3</span>Install the app</div>
+    <div><span>4</span>Set up the local AI (optional)</div>
+    <div><span>5</span>Your first analysis</div>
+    <div><span>6</span>Reading the results</div>
+    <div><span>7</span>Excel and Word reports</div>
+    <div><span>8</span>Finding ticker symbols</div>
+    <div><span>9</span>Privacy and how the AI is used</div>
+    <div><span>10</span>Settings for advanced users</div>
+    <div><span>11</span>Troubleshooting</div>
+    <div><span>12</span>Glossary</div>
+  </div>
+  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 9.</div>
+</section>
+
+<!-- ============================ 1 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 1</div>
+  <h2>What the app does</h2>
+  <p class="intro">You type in company tickers; the app collects public information about each one, organises it, and optionally asks a local AI model to summarise it.</p>
+
+  <div class="flow">
+    <div><b>1 · Collect</b>Ratios, quarterly results, pros and cons from screener.in</div><div class="arrow">→</div>
+    <div><b>2 · Download</b>The latest filings: concall transcripts, presentations, annual reports, results</div><div class="arrow">→</div>
+    <div><b>3 · Extract</b>Every number in those PDFs, with its page and the sentence it came from</div><div class="arrow">→</div>
+    <div><b>4 · News</b>Recent headlines from six news sources</div><div class="arrow">→</div>
+    <div><b>5 · Summarise</b>Local AI writes a verdict, an analysis and a news digest</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>What you get for each company</h3>
+      <ul>
+        <li>Key ratios: market cap, price, P/E, ROE, ROCE and more</li>
+        <li>13 quarters of results, with trend charts</li>
+        <li>Strengths and risks</li>
+        <li>An AI verdict (Positive, Neutral or Cautious) with a short analysis</li>
+        <li>Recent news with an AI digest and sentiment</li>
+        <li>The downloaded filings, and every figure found inside them</li>
+        <li>A formatted Excel workbook and a Word report</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What it isn't</h3>
+      <ul>
+        <li><strong>Not investment advice.</strong> The AI can be wrong. Use it as a starting point for your own research.</li>
+        <li><strong>Not real-time.</strong> Prices and ratios are as shown on screener.in when you run the analysis.</li>
+        <li><strong>Not a trading tool.</strong> It reads public information; it never connects to a broker.</li>
+      </ul>
+      <p class="muted" style="margin-top:8pt">The AI part is optional. Without it you still get all the data, charts, news headlines and reports.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 2 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 2</div>
+  <h2>Before you start</h2>
+  <p class="intro">Here's what your computer needs. Setting everything up takes 15 to 30 minutes the first time, mostly waiting for downloads.</p>
+  <table>
+    <tr><th style="width:24%">You need</th><th>Details</th></tr>
+    <tr><td>A computer</td><td>Windows 10 or 11, macOS, or Linux</td></tr>
+    <tr><td>Python 3.10 or newer</td><td>The programming language the app is written in. Free from <a href="https://www.python.org/downloads/">python.org/downloads</a>. Chapter 3 shows how to check whether you already have it.</td></tr>
+    <tr><td>Internet connection</td><td>To fetch company data, filings and news. The AI itself works offline.</td></tr>
+    <tr><td>Disk space</td><td>About 500 MB for the app and its libraries, plus room for filings (roughly 10 to 40 MB per company). The AI model is extra: 0.4 to 8 GB.</td></tr>
+    <tr><td>Memory (RAM)</td><td>4 GB is enough without AI. For the recommended AI model, 16 GB or more.</td></tr>
+    <tr><td>A web browser</td><td>Chrome, Edge, Firefox or Safari. The app opens in your browser but runs on your computer.</td></tr>
+  </table>
+  <div class="note"><strong>New to the terminal?</strong> Some steps ask you to type commands. On Windows, open <strong>PowerShell</strong> (search for it in the Start menu). On macOS, open <strong>Terminal</strong> (press <kbd>⌘</kbd> <kbd>Space</kbd> and type "Terminal"). Type or paste each command, then press <kbd>Enter</kbd>. Lines starting with <code>#</code> in this guide are comments; you don't type them.</div>
+</section>
+
+<!-- ============================ 3 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 3</div>
+  <h2>Install the app</h2>
+  <p class="intro">Five steps, done once. After that, starting the app is a single command (step 5).</p>
+
+  <div class="step"><div class="num">1</div><div>
+    <h3>Check for Python, install it if needed</h3>
+    <div class="os">
+      <div><h4>Windows</h4><pre><code>python --version</code></pre>
+        If you see an error or a version below 3.10, download Python from <a href="https://www.python.org/downloads/">python.org</a>. <strong>On the first installer screen, tick "Add python.exe to PATH".</strong> Then close and reopen PowerShell.</div>
+      <div><h4>macOS / Linux</h4><pre><code>python3 --version</code></pre>
+        If it's missing or older than 3.10, install it from <a href="https://www.python.org/downloads/">python.org</a> (macOS), with Homebrew (<code>brew install python</code>), or with your Linux package manager.</div>
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div>
+    <h3>Download the app</h3>
+    <p><strong>Easiest:</strong> on the project's GitHub page, click the green <strong>Code</strong> button, then <strong>Download ZIP</strong>. Unzip it somewhere easy to find, such as your Documents folder.</p>
+    <p><strong>With git</strong> (if you have it):</p>
+    <pre><code>git clone https://github.com/tapariapurv/indian-stock-data-hub.git</code></pre>
+    <p>Then move into the project folder. Replace the path with wherever you put it:</p>
+    <pre><code>cd Documents/indian-stock-data-hub</code></pre>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div>
+    <h3>Create a private Python environment</h3>
+    <p>This keeps the app's libraries separate from anything else on your computer. You do this once, inside the project folder.</p>
+    <div class="os">
+      <div><h4>Windows</h4><pre><code>python -m venv .venv
+.venv\Scripts\activate</code></pre></div>
+      <div><h4>macOS / Linux</h4><pre><code>python3 -m venv .venv
+source .venv/bin/activate</code></pre></div>
+    </div>
+    <p>Your prompt now starts with <code>(.venv)</code>. That means the environment is active.</p>
+    <div class="note warn"><strong>Windows says "running scripts is disabled"?</strong> Skip the activate line and put <code>.venv\Scripts\</code> in front of the commands in steps 4 and 5, for example <code>.venv\Scripts\python -m pip install -r requirements.txt</code>.</div>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div>
+    <h3>Install the app's libraries</h3>
+    <pre><code>python -m pip install -r requirements.txt</code></pre>
+    <p>This downloads Streamlit (the app framework), the PDF reader, and the Excel and Word writers. It takes a minute or two.</p>
+  </div></div>
+
+  <div class="step"><div class="num">5</div><div>
+    <h3>Start the app</h3>
+    <pre><code>python -m streamlit run app.py</code></pre>
+    <p>Your browser opens at <a href="http://localhost:8501">http://localhost:8501</a>. If it doesn't, open that address yourself. The first time, Streamlit may ask for an email address; just press <kbd>Enter</kbd> to skip.</p>
+    <p><strong>To stop the app</strong>, click the terminal window and press <kbd>Ctrl</kbd> <kbd>C</kbd>. <strong>To start it again another day</strong>, open a terminal in the project folder, activate the environment (step 3's second line), and run step 5.</p>
+  </div></div>
+</section>
+
+<!-- ============================ 4 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 4 · optional</div>
+  <h2>Set up the local AI</h2>
+  <p class="intro">The AI verdicts, analyses and news digests come from <strong>Ollama</strong>, a free program that runs AI models on your own computer. Skip this chapter if you only want the data and reports.</p>
+
+  <div class="step"><div class="num">1</div><div>
+    <h3>Install Ollama</h3>
+    <table>
+      <tr><th style="width:18%">System</th><th>How</th></tr>
+      <tr><td>Windows</td><td>Download and run <code>OllamaSetup.exe</code> from <a href="https://ollama.com/download">ollama.com/download</a></td></tr>
+      <tr><td>macOS</td><td>Download from <a href="https://ollama.com/download">ollama.com/download</a>, drag <strong>Ollama</strong> into Applications and open it. Or: <code>brew install ollama</code></td></tr>
+      <tr><td>Linux</td><td><code>curl -fsSL https://ollama.com/install.sh | sh</code></td></tr>
+    </table>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div>
+    <h3>Make sure it's running</h3>
+    <p>The Ollama desktop app starts automatically; look for the llama icon in your menu bar or system tray. If you installed it from the command line, start it with <code>ollama serve</code> and leave that window open.</p>
+    <p>To check, open <a href="http://localhost:11434">http://localhost:11434</a> in your browser. It should say <em>Ollama is running</em>.</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div>
+    <h3>Download a model</h3>
+    <p>Pick one based on your computer's memory, then run the matching command. This is a one-off download.</p>
+    <table>
+      <tr><th style="width:22%">Your RAM</th><th style="width:30%">Command</th><th>What to expect</th></tr>
+      <tr><td>16 GB or more</td><td><code>ollama pull gemma4:e2b</code></td><td><span class="tag best">Recommended</span> 7.2 GB download. Accurate, quotes the right numbers, about 2 seconds per summary on a recent laptop.</td></tr>
+      <tr><td>24 GB or more</td><td><code>ollama pull gemma4:e4b</code></td><td>Larger and more capable. The app prefers it when installed.</td></tr>
+      <tr><td>8 GB</td><td><code>ollama pull qwen2.5:0.5b</code></td><td><span class="tag low">Basic</span> 0.4 GB and very fast, but in testing it sometimes called weak numbers strong. Treat its verdicts with extra caution.</td></tr>
+    </table>
+    <p class="muted" style="margin:0">Any other chat model from <a href="https://ollama.com/library">ollama.com/library</a> also works.</p>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div>
+    <h3>Connect the app</h3>
+    <p>Refresh the app in your browser. The sidebar shows a green <strong>Ollama connected</strong> badge, and the <strong>Local model</strong> list shows the models it found, most capable first. No keys, no sign-up. Downloaded another model later? Just refresh the page.</p>
+  </div></div>
+</section>
+
+<!-- ============================ 5 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 5</div>
+  <h2>Your first analysis</h2>
+  <p class="intro">Everything is controlled from the sidebar on the left. The defaults work well, so you can simply press <strong>Run analysis</strong>.</p>
+  <figure><img src="images/overview.jpg" alt="The app after an analysis" style="max-height:76mm; width:auto; margin:0 auto"><figcaption>The app after analysing three companies: sidebar on the left, summary tiles and export buttons at the top, one card per company below.</figcaption></figure>
+  <table>
+    <tr><th style="width:26%">Sidebar control</th><th>What it does</th></tr>
+    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 8 shows how to find them. Start with 1 to 5 companies.</td></tr>
+    <tr><td><strong>Filings to download</strong></td><td>Click to turn each filing type on or off: concall transcripts, investor presentations, annual reports and quarterly results. Fewer types means a faster run.</td></tr>
+    <tr><td><strong>Timeframe</strong></td><td>How many of each filing to fetch: latest only (fastest), the last 2 or 4, or all available.</td></tr>
+    <tr><td><strong>Local AI switch</strong></td><td>Turns the AI verdicts, analyses and news digests on or off. Greyed out if Ollama isn't running.</td></tr>
+    <tr><td><strong>Local model</strong></td><td>Which of your installed AI models to use, with its size.</td></tr>
+    <tr><td><strong>Run analysis</strong></td><td>Starts the run. Changes to the controls above only apply when you press it.</td></tr>
+    <tr><td><strong>User guide (PDF)</strong></td><td>Opens this guide.</td></tr>
+  </table>
+  <p style="margin-top:4pt"><strong>How long does it take?</strong> The first run for a company takes 20 to 60 seconds, mostly downloading and reading its PDFs. A progress bar shows which company is being processed. Results are remembered for an hour, so re-running is almost instant, and downloaded PDFs are kept in the <code>downloads</code> folder so they are never fetched twice.</p>
+</section>
+
+<!-- ============================ 6 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 6</div>
+  <h2>Reading the results</h2>
+  <p class="intro">Results are organised into three tabs: <strong>Overview</strong>, <strong>Financials</strong> and <strong>Filings</strong>.</p>
+
+  <h3>Overview: one card per company</h3>
+  <figure><img src="images/company-and-news.jpg" alt="A company card with news"><figcaption>A company card: the AI analysis, key ratios, strengths and risks, and recent news with its AI digest.</figcaption></figure>
+  <ul>
+    <li><strong>AI verdict</strong> (green Positive, amber Neutral, red Cautious) and a 3-sentence analysis. The line under it names the model that wrote it and how many tokens it used.</li>
+    <li><strong>Key ratios</strong> as shown on screener.in. See the glossary for what each one means.</li>
+    <li><strong>Strengths and risks</strong>: screener.in's automatic pros and cons.</li>
+    <li><strong>Recent news</strong>: up to 8 headlines from the last 14 days, a 2-sentence AI digest, and an overall sentiment (Positive, Mixed or Negative). Click a headline to read the article.</li>
+    <li><strong>Figures extracted from filings</strong>: click to open a searchable table of every number found in the downloaded PDFs, with its page and the sentence it came from. These are found by pattern matching, so check the context before relying on one.</li>
+  </ul>
+
+  <h3>Financials: trends at a glance</h3>
+  <figure><img src="images/financials.jpg" alt="The Financials tab"><figcaption>The Financials tab: latest-quarter figures with their change from the previous quarter, a sales-versus-profit chart, and the full results table.</figcaption></figure>
+  <p>Pick a company at the top. The four cards show the latest quarter's sales, net profit, operating margin and EPS. The small arrow shows the change from the previous quarter; the line underneath shows the last 8 quarters. Below are a chart of 13 quarters and the complete table, which you can download as CSV.</p>
+
+  <h3>Filings: the source documents</h3>
+  <p>For each company: which filings were downloaded (or why one was skipped, for example because it was larger than 25 MB or wasn't a PDF), with links to the originals. Expand <em>All document links</em> to see every document screener.in lists for the company.</p>
+</section>
+
+<!-- ============================ 7 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 7</div>
+  <h2>Excel and Word reports</h2>
+  <p class="intro">The <strong>Excel workbook</strong> and <strong>Word report</strong> buttons appear above the tabs after a run. Both contain everything from that run.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Excel workbook</h3>
+      <ul>
+        <li><strong>Overview sheet:</strong> summary tiles and one row per company, with verdicts, ratios and quarter-on-quarter changes. Click a ticker to jump to its sheet.</li>
+        <li><strong>One sheet per company:</strong> AI analysis, key ratios, strengths and risks, news with links, all quarterly results with a chart, and the filings.</li>
+        <li><strong>Figures sheet:</strong> every number extracted from every PDF in one filterable table. Use the arrows in the header row to filter by ticker, category or label.</li>
+      </ul>
+      <p class="muted">Totals and changes are live formulas, so they update if you edit the numbers. Sheets print landscape, one page wide.</p>
+    </div>
+    <div class="card">
+      <h3>Word report</h3>
+      <ul>
+        <li><strong>Cover page</strong> with an "At a glance" table of all companies.</li>
+        <li><strong>One page per company:</strong> verdict, AI analysis, ratios, strengths and risks, the last 5 quarters, news with clickable links, and the filings.</li>
+        <li>A4 layout with page numbers, ready to print or share as PDF (<em>File → Save As → PDF</em> in Word).</li>
+      </ul>
+      <p class="muted">The Word report shows 5 quarters so the table fits the page. The Excel workbook has all of them.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 8 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 8</div>
+  <h2>Finding ticker symbols</h2>
+  <p class="intro">The app uses the symbol from the company's page address on screener.in, which is usually its NSE symbol.</p>
+  <ol>
+    <li>Go to <a href="https://www.screener.in">screener.in</a> and search for the company.</li>
+    <li>Open its page and look at the address bar. The part after <code>/company/</code> is the symbol. For <code>screener.in/company/HDFCBANK/</code> it's <strong>HDFCBANK</strong>.</li>
+    <li>Type that into the <strong>Tickers</strong> box. Upper or lower case both work.</li>
+  </ol>
+  <table>
+    <tr><th>Company</th><th>Symbol</th><th>Company</th><th>Symbol</th></tr>
+    <tr><td>Reliance Industries</td><td><code>RELIANCE</code></td><td>HDFC Bank</td><td><code>HDFCBANK</code></td></tr>
+    <tr><td>Tata Consultancy Services</td><td><code>TCS</code></td><td>ICICI Bank</td><td><code>ICICIBANK</code></td></tr>
+    <tr><td>Infosys</td><td><code>INFY</code></td><td>State Bank of India</td><td><code>SBIN</code></td></tr>
+  </table>
+  <div class="note">Some companies listed only on the BSE use a number instead of letters. Whatever appears after <code>/company/</code> on screener.in is what the app needs.</div>
+</section>
+
+<!-- ============================ 9 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 9</div>
+  <h2>Privacy and how the AI is used</h2>
+  <p class="intro">The AI runs on your computer through Ollama. None of your data is sent to an AI company.</p>
+  <h3>What leaves your computer</h3>
+  <p>Only ordinary web requests for public pages: company data from screener.in, filing PDFs from the stock exchanges and company websites, and headlines from Google News, Bing News, Economic Times, Livemint, Business Standard and Hindu BusinessLine. The app has no accounts, no tracking and no analytics.</p>
+  <h3>What the AI sees</h3>
+  <table>
+    <tr><th style="width:22%">AI task</th><th>Input</th><th style="width:15%">Typical tokens</th></tr>
+    <tr><td>Verdict and analysis</td><td>Key ratios, the last two quarters' results, and up to 4 strengths and 4 risks</td><td>≈ 400</td></tr>
+    <tr><td>News digest and sentiment</td><td>Up to 8 headlines (not the full articles)</td><td>≈ 300</td></tr>
+    <tr><td>Error explanation</td><td>The error message, only when a company fails</td><td>≈ 100</td></tr>
+  </table>
+  <p>A <em>token</em> is roughly ¾ of a word. The app keeps usage low: it sends only clean, structured data (the thousands of PDF numbers are too noisy); caps every reply's length; switches off hidden "thinking"; and reuses answers for an hour (30 minutes for news), so re-running never pays twice for the same data. The Overview tab shows exactly how many tokens each run used.</p>
+  <div class="note warn"><strong>Not investment advice.</strong> Verdicts come from a small language model reading scraped data. It can misread numbers or miss context. Always check the underlying figures and filings before making decisions.</div>
+  <h3>Using data sources responsibly</h3>
+  <p>The app fetches public pages the way a browser does, pauses between companies, and keeps downloaded PDFs so they're never fetched twice. Please keep it that way: analyse a handful of companies at a time, and respect each website's terms of use.</p>
+</section>
+
+<!-- ============================ 10 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 10</div>
+  <h2>Settings for advanced users</h2>
+  <p class="intro">Most people never need these.</p>
+  <h3>Ollama on another address or computer</h3>
+  <p>The app looks for Ollama at <code>http://localhost:11434</code>. To use a different port, or a more powerful computer on your network, set <code>OLLAMA_HOST</code> before starting the app. This is the same setting Ollama itself uses.</p>
+  <div class="os">
+    <div><h4>Windows (PowerShell)</h4><pre><code>$env:OLLAMA_HOST = "192.168.1.20:11434"
+python -m streamlit run app.py</code></pre></div>
+    <div><h4>macOS / Linux</h4><pre><code>OLLAMA_HOST=192.168.1.20:11434 \
+  python -m streamlit run app.py</code></pre></div>
+  </div>
+  <h3>Run on a different port</h3>
+  <pre><code>python -m streamlit run app.py --server.port 8502</code></pre>
+  <h3>Other limits (in <code>app.py</code>)</h3>
+  <table>
+    <tr><th style="width:34%">Setting</th><th>Default and meaning</th></tr>
+    <tr><td><code>MAX_FILE_MB</code></td><td>25. Filings larger than this are skipped.</td></tr>
+    <tr><td><code>CACHE_TTL_SECONDS</code></td><td>3600. How long company results are reused.</td></tr>
+    <tr><td><code>NEWS_MAX_AGE_DAYS</code> / <code>NEWS_MAX_ITEMS</code></td><td>14 / 8. How recent news must be, and how many headlines to keep.</td></tr>
+    <tr><td><code>OLLAMA_MODEL_PREFERENCE</code></td><td>The order in which installed models are suggested.</td></tr>
+  </table>
+  <h3>Clearing saved data</h3>
+  <p>To force a completely fresh run, open the <strong>⋮</strong> menu at the top right of the app and choose <strong>Clear cache</strong>. Downloaded PDFs live in the <code>downloads</code> folder; delete it to free disk space (it's recreated when needed).</p>
+</section>
+
+<!-- ============================ 11 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 11</div>
+  <h2>Troubleshooting</h2>
+  <p class="intro">Find what you see in the left column.</p>
+  <h3>Installing and starting</h3>
+  <table>
+    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
+    <tr><td><code>python</code> or <code>python3</code> "not found"</td><td>Install Python from python.org (chapter 3, step 1). On Windows, re-run the installer and tick <em>Add python.exe to PATH</em>, then open a new PowerShell window.</td></tr>
+    <tr><td>"running scripts is disabled on this system" (Windows)</td><td>Don't activate the environment; prefix commands with <code>.venv\Scripts\</code> instead, e.g. <code>.venv\Scripts\python -m streamlit run app.py</code>.</td></tr>
+    <tr><td>Errors during <code>pip install</code></td><td>Check <code>python --version</code> is 3.10 or newer, then upgrade pip and retry: <code>python -m pip install --upgrade pip</code>.</td></tr>
+    <tr><td>"No module named streamlit"</td><td>The environment isn't active. Run the activate command from chapter 3, step 3, then try again.</td></tr>
+    <tr><td>"Port 8501 is already in use"</td><td>The app is already running in another window, so use that one. Or start it on another port: <code>--server.port 8502</code>.</td></tr>
+  </table>
+  <h3>Running an analysis</h3>
+  <table>
+    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
+    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 8). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
+    <tr><td>A filing says <em>Skipped</em></td><td>It was over 25 MB, or the link led to a web page rather than a PDF. The rest of the analysis is unaffected.</td></tr>
+    <tr><td>"No news in the last 14 days"</td><td>Normal for smaller companies. The news sources simply had nothing that named the company.</td></tr>
+    <tr><td>Numbers look out of date</td><td>Results are reused for an hour. Use <strong>⋮ → Clear cache</strong>, then run again.</td></tr>
+  </table>
+  <h3>Local AI</h3>
+  <table>
+    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
+    <tr><td>Sidebar says <strong>Ollama not detected</strong></td><td>Start Ollama (open the app, or run <code>ollama serve</code>), then refresh the page. Check <a href="http://localhost:11434">localhost:11434</a> says <em>Ollama is running</em>.</td></tr>
+    <tr><td>Connected, but the model list is empty</td><td>No model installed yet: run <code>ollama pull gemma4:e2b</code> (chapter 4, step 3) and refresh.</td></tr>
+    <tr><td>"… returned no summary for this ticker"</td><td>Update Ollama to the latest version (0.9 or newer is required), or pick another model from the list.</td></tr>
+    <tr><td>The first AI answer is slow</td><td>The model is loading into memory, which can take 10 to 30 seconds. Later answers take a second or two.</td></tr>
+    <tr><td>Computer slows down</td><td>The model is too large for your RAM. Choose a smaller one. <code>ollama list</code> shows installed models; <code>ollama rm &lt;name&gt;</code> removes one.</td></tr>
+  </table>
+  <h3>Reports</h3>
+  <table>
+    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
+    <tr><td>Excel or Word warns about the file</td><td>Please report it (see the project's GitHub <em>Issues</em> page) with the tickers you used. Both files are checked automatically before download, so this shouldn't happen.</td></tr>
+    <tr><td>Totals show 0 in a file previewer</td><td>Some previewers (e.g. macOS Quick Look) don't calculate formulas. Open the file in Excel, Numbers, LibreOffice or Google Sheets.</td></tr>
+  </table>
+</section>
+
+<!-- ============================ 12 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 12</div>
+  <h2>Glossary</h2>
+  <p class="intro">The terms you'll meet in the app, in plain language.</p>
+  <dl>
+    <div><dt>Ticker / symbol</dt><dd>A company's short code on the stock exchange, e.g. INFY for Infosys.</dd></div>
+    <div><dt>Crore (Cr)</dt><dd>10 million (1,00,00,000). Indian financial figures are usually in ₹ crore.</dd></div>
+    <div><dt>Market cap</dt><dd>Share price × number of shares: what the whole company is worth on the market.</dd></div>
+    <div><dt>P/E (price-to-earnings)</dt><dd>Share price ÷ earnings per share. Higher means investors pay more for each rupee of profit.</dd></div>
+    <div><dt>Book value</dt><dd>The company's net assets per share, from its accounts.</dd></div>
+    <div><dt>ROE (return on equity)</dt><dd>Profit as a percentage of shareholders' money. Shows how efficiently that money is used.</dd></div>
+    <div><dt>ROCE (return on capital employed)</dt><dd>Operating profit as a percentage of all capital used, including debt.</dd></div>
+    <div><dt>Dividend yield</dt><dd>Yearly dividend as a percentage of the share price.</dd></div>
+    <div><dt>Face value</dt><dd>The nominal value printed on a share. Rarely matters for analysis.</dd></div>
+    <div><dt>Sales / revenue</dt><dd>Money earned from the company's business in the period.</dd></div>
+    <div><dt>Operating profit</dt><dd>Sales minus operating expenses, before interest, depreciation and tax.</dd></div>
+    <div><dt>OPM (operating profit margin)</dt><dd>Operating profit as a percentage of sales.</dd></div>
+    <div><dt>Net profit</dt><dd>What's left after all expenses, interest and tax.</dd></div>
+    <div><dt>EPS (earnings per share)</dt><dd>Net profit ÷ number of shares, in rupees.</dd></div>
+    <div><dt>QoQ (quarter on quarter)</dt><dd>Change from the previous quarter. Rising sales or profit is shown in green; rising costs are shown in red.</dd></div>
+    <div><dt>pp (percentage points)</dt><dd>The change between two percentages: a margin going from 20% to 23% is +3 pp.</dd></div>
+    <div><dt>Concall transcript</dt><dd>The written record of management's earnings call with analysts.</dd></div>
+    <div><dt>Investor presentation</dt><dd>The slide deck a company publishes alongside its results.</dd></div>
+    <div><dt>Ollama</dt><dd>Free software that runs AI language models on your own computer.</dd></div>
+    <div><dt>Model</dt><dd>The AI "brain" Ollama runs. Bigger models are usually more accurate but need more memory.</dd></div>
+    <div><dt>Token</dt><dd>A chunk of text, roughly ¾ of a word, that AI models read and write.</dd></div>
+    <div><dt>Verdict</dt><dd>The AI's one-word take (Positive, Neutral or Cautious), based only on the scraped data.</dd></div>
+  </dl>
+</section>
+
+</body>
+</html>
