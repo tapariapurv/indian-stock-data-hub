@@ -57,3 +57,24 @@ for page in ["archive_search.py", "history.py", "settings_page.py"]:
     page_at.run()
     assert not page_at.exception, (page, [e.value for e in page_at.exception])
 print("ok: archive, history and settings pages render")
+
+# The archive's keyword search must work with no model at all, and fast.
+import re  # noqa: E402
+
+arch = AppTest.from_file(str(ROOT / "app_pages" / "archive_search.py"), default_timeout=90)
+arch.session_state["settings"] = cfg.load()
+arch.run()
+assert [t.label for t in arch.tabs][:2] == [":material/search: Find", ":material/forum: Ask"]
+assert arch.chat_input, "the Ask tab needs a chat box"
+if arch.text_input:                      # skipped when the archive is empty
+    arch.text_input[0].set_value("capital")
+    arch.button[0].click().run()
+    assert not arch.exception, [e.value for e in arch.exception]
+    found = re.search(r"\*\*(\d+) match\(es\)\*\* :gray\[· found in (\d+) ms\]",
+                      " ".join(m.value for m in arch.markdown))
+    if found:
+        assert int(found.group(2)) < 3000, f"keyword search took {found.group(2)} ms"
+        print(f"ok: keyword search returned {found.group(1)} matches in {found.group(2)} ms, "
+              "no model involved")
+    else:
+        print("ok: keyword search ran (nothing matched in this archive)")

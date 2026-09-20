@@ -1116,7 +1116,7 @@ def _wide_context(settings: dict) -> dict:
 
 def smart_search(question: str, settings: dict, tickers=None, categories=None,
                  candidates: int = 24, keep: int = 6, deadline: float = 60.0,
-                 progress=None, thorough: bool = False) -> dict:
+                 progress=None, thorough: bool = False, history=None) -> dict:
     """Answer a question from the archive the way a person would.
 
     Four steps, and the model is used for the two that need judgement:
@@ -1181,7 +1181,7 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
         return out
 
     say(f"Reading the {min(len(ranked), keep)} best passages and answering…")
-    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep)
+    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history)
     out["tokens"] += tokens
     out["answer"] = answer
     if not answer:
@@ -1209,7 +1209,7 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
     ranked += [h for i, h in enumerate(hits) if i not in set(order)]  # the rest, still browsable
     out["hits"] = ranked
 
-    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep)
+    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history)
     out["tokens"] += tokens
     out["answer"] = answer
     return out

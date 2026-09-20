@@ -731,7 +731,8 @@ def rerank_passages(question: str, snippets: list[dict], settings: dict,
     return (order[:keep] or list(range(min(keep, len(snippets))))), tokens
 
 
-def synthesize_search(question: str, snippets: list[dict], settings: dict) -> tuple[str | None, int]:
+def synthesize_search(question: str, snippets: list[dict], settings: dict,
+                      history: list[dict] | None = None) -> tuple[str | None, int]:
     """Answer a question using only the retrieved passages, each cited.
 
     Structured output, for the same reason as everywhere else: asked in
@@ -747,7 +748,12 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict) -> tu
               'The answer is three to five sentences, using ONLY the passages given, quoting their '
               'figures and citing each claim as [1], [2]. Where companies differ, say how. '
               'If the passages do not answer the question, say exactly what is missing.')
-    raw, tokens = complete(f"Passages from company filings:\n{body}\n\nQuestion: {question}",
+    thread = ""
+    if history:
+        thread = "Earlier in this conversation:\n" + "\n".join(
+            f"{turn['role']}: {' '.join(str(turn['content']).split())[:200]}"
+            for turn in history[-4:]) + "\n\n"
+    raw, tokens = complete(f"{thread}Passages from company filings:\n{body}\n\nQuestion: {question}",
                            settings["ai"]["tokens_synthesis"], settings, "Archive answer",
                            system=system, schema=_schema("answer"))
     reply = _json_reply(raw)

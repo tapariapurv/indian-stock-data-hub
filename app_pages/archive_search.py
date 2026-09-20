@@ -1,23 +1,22 @@
-"""Search everything ever downloaded — across companies, entirely offline."""
+"""The archive: a search bar for finding words, a chat window for asking questions."""
 
+import time
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 import archive
 import core
 
 settings = st.session_state.settings
-has_fts = archive.init()
+archive.init()
 stats = archive.stats()
 ai_ready = core.ai_signature(settings)[0]
-ai_wanted = settings["features"].get("archive_ai", True)
 
 st.caption(":material/search: LOCAL FILING ARCHIVE")
-st.title("Search your filings")
-st.markdown(":gray[Every concall transcript, investor presentation, annual report and results PDF the app "
-            "has downloaded stays on this machine and stays searchable — across companies, with no "
+st.title("Your filings")
+st.markdown(":gray[Every concall transcript, investor presentation, annual report and results PDF "
+            "the app has downloaded stays on this machine — searchable across companies, with no "
             "network and no per-search cost.]")
 
 if not stats["documents"]:
@@ -32,103 +31,159 @@ m3.metric("Figures", f"{stats['figures']:,}", border=True)
 m4.metric("Archive size", f"{stats['db_mb']:.1f} MB", border=True,
           help="The search index. The PDFs themselves are counted on the Settings page.")
 
-with st.form("archive_search"):
-    question = st.text_input("Ask across every filing",
-                             placeholder="e.g. what did management say about capex plans?")
-    f1, f2, f3 = st.columns([2, 2, 1])
-    tickers = f1.multiselect("Companies", archive.indexed_tickers(), placeholder="All companies")
-    categories = f2.multiselect("Filing type", core.WANTED_CATEGORIES, placeholder="All types")
-    keep = f3.number_input("Passages to read", min_value=3, max_value=20, value=6,
-                           help="How many of the best passages the model reads before answering. "
-                                "Fewer is faster and cheaper.")
-    thorough = st.toggle(
-        "Thorough search", value=False,
-        help="Adds two more model calls: one to work out the vocabulary a filing would use, one "
-             "to rank what it finds. Better on an obscure question, but three times slower and "
-             "three times the tokens. A fast local model barely notices; a slow hosted one does.")
-    patience = st.slider("Give up after (seconds)", 15, 180, 60, 15,
-                         help="A busy provider can take minutes. When this runs out you get the "
-                              "passages found so far instead of a spinning page.")
-    use_model = st.toggle(
-        "Let the model do the searching and answer", value=ai_ready and ai_wanted,
-        disabled=not ai_ready,
-        help="It suggests the wording a filing would really use, discards the coincidental "
-             "matches, then answers from what is left — citing each passage.")
-    searched = st.form_submit_button("Search", type="primary", icon=":material/search:")
+tab_find, tab_ask = st.tabs([":material/search: Find", ":material/forum: Ask"])
+companies = archive.indexed_tickers()
 
-if not ai_ready:
-    reason = ("AI is switched off in **Settings → Models & keys**."
-              if not settings["ai"].get("enabled")
-              else "No model is reachable — check **Settings → Models & keys** and press "
-                   "*Test connection*.")
-    st.info(f"This is plain keyword search right now. {reason}", icon=":material/info:")
-elif not ai_wanted:
-    st.caption(":material/info: AI answers are switched off under **Settings → Data & scraping → "
-               "Features**. Switch the toggle above on for this search only.")
-if not has_fts:
-    st.caption(":material/info: This Python's SQLite has no FTS5 module, so search falls back to a "
-               "plain scan. It still works; it is just slower on a large archive.")
 
-if not searched or not question.strip():
-    st.stop()
+def source_line(hit: dict) -> str:
+    return f"**{hit['ticker']}** · {hit['category']} · page {hit['page']}"
 
-search_settings = settings if use_model else {**settings, "ai": {**settings["ai"], "enabled": False}}
-with st.status("Searching your filings…", expanded=True) as status:
-    found = core.smart_search(question, search_settings, tickers or None, categories or None,
-                              candidates=24, keep=int(keep), deadline=float(patience),
-                              progress=lambda line: status.write(line), thorough=thorough)
-    status.update(label=f"Read {found['considered']} passages · {found['tokens']:,} tokens",
-                  state="complete", expanded=False)
 
-for note in found.get("notes", []):
-    st.caption(f":material/info: {note.capitalize()} — the passages below are still ranked by "
-               "relevance, and a shorter question or a faster model usually fixes it.")
+# --------------------------------------------------------------------------
+# Find: a search bar. No model, so it answers instantly.
+# --------------------------------------------------------------------------
+with tab_find:
+    with st.form("find", border=False):
+        bar, button = st.columns([6, 1], vertical_alignment="bottom")
+        needle = bar.text_input(
+            "Search", placeholder="Search every filing — e.g. capital expenditure, GNPA, Hong Kong",
+            label_visibility="collapsed")
+        searched = button.form_submit_button("Search", type="primary", icon=":material/search:",
+                                             width="stretch")
+        with st.expander("Narrow it down", icon=":material/filter_alt:"):
+            c1, c2, c3 = st.columns([2, 2, 1])
+            pick_tickers = c1.multiselect("Companies", companies, placeholder="All companies")
+            pick_types = c2.multiselect("Filing type", core.WANTED_CATEGORIES,
+                                        placeholder="All types")
+            limit = c3.number_input("Results", 10, 200, 50, 10)
 
-if not found["hits"]:
-    st.warning("Nothing in the archive matches that. Try different words, or widen the filters.",
-               icon=":material/search_off:")
-    st.stop()
+    st.caption(":material/bolt: Instant keyword search across every indexed page. No model is used, "
+               "so it costs nothing and never waits on a provider. Matching words are in bold.")
 
-if found["answer"]:
-    with st.container(border=True):
-        st.markdown(f"**:material/lightbulb: {question}**")
-        st.markdown(found["answer"])
-        st.caption(f":material/memory: Answered by `{settings['ai']['model']}` from the "
-                   f"{min(len(found['hits']), int(keep))} passages it judged most relevant, out of "
-                   f"{found['considered']} retrieved · {found['tokens']:,} tokens. "
-                   "The numbers in [brackets] are the passages below.")
-elif found["used_model"]:
-    st.caption(f":material/warning: The model ranked the results but returned no written answer "
-               f"({found['tokens']:,} tokens). The passages below are still ordered best first.")
+    if searched and needle.strip():
+        started = time.time()
+        hits = archive.search(needle, pick_tickers or None, pick_types or None, int(limit))
+        elapsed = time.time() - started
 
-if found["terms"]:
+        if not hits:
+            st.warning("No page in the archive contains those words. Try fewer, or more common, "
+                       "words — the search matches any of them.", icon=":material/search_off:")
+        else:
+            st.markdown(f"**{len(hits)} match(es)** :gray[· found in {elapsed * 1000:.0f} ms]")
+            for hit in hits[:40]:
+                with st.container(border=True):
+                    with st.container(horizontal=True, vertical_alignment="center"):
+                        st.markdown(source_line(hit), width="stretch")
+                        st.badge(Path(hit.get("path") or "").name or "—", color="gray",
+                                 icon=":material/description:")
+                    st.markdown(f":gray[…] {hit['snippet']} :gray[…]")
+                    with st.expander("Read the whole page", icon=":material/article:"):
+                        st.caption(f":material/folder: `{hit.get('path') or 'file removed'}` "
+                                   f"— page {hit['page']}")
+                        st.text(hit["text"][:4000])
+            if len(hits) > 40:
+                st.caption(f"Showing the first 40 of {len(hits)}. Narrow it down, or raise the "
+                           "result limit.")
+    elif searched:
+        st.warning("Type something to search for.", icon=":material/edit:")
+
+
+# --------------------------------------------------------------------------
+# Ask: a chat window. Slower, because a model reads the passages.
+# --------------------------------------------------------------------------
+with tab_ask:
+    st.session_state.setdefault("archive_chat", [])
+    chat = st.session_state.archive_chat
+
     with st.container(horizontal=True, vertical_alignment="center"):
-        st.markdown(":gray[Also searched for:]", width="content")
-        for term in found["terms"]:
-            st.badge(term, color="gray", icon=":material/search:")
+        st.markdown("**Ask your archive** :gray[· answers come only from your own filings, "
+                    "with each claim cited]", width="stretch")
+        with st.popover("Options", icon=":material/tune:"):
+            st.multiselect("Companies", companies, placeholder="All companies", key="ask_tickers")
+            st.multiselect("Filing type", core.WANTED_CATEGORIES, placeholder="All types",
+                           key="ask_types")
+            st.number_input("Passages to read", 3, 20, 6, key="ask_keep",
+                            help="Fewer is faster and cheaper.")
+            st.toggle("Thorough", value=False, key="ask_thorough",
+                      help="Two extra model calls: one to work out the wording a filing would use, "
+                           "one to rank what it finds. Better on an obscure question, three times "
+                           "slower.")
+            st.slider("Give up after (seconds)", 15, 240, 90, 15, key="ask_patience")
+        if chat and st.button("Clear", icon=":material/delete_sweep:", type="tertiary"):
+            st.session_state.archive_chat = []
+            st.rerun()
 
-rows = []
-for i, hit in enumerate(found["hits"], start=1):
-    path = Path(hit.get("path") or "")
-    rows.append({"#": i, "Company": hit["ticker"], "Filing": hit["category"], "Page": hit["page"],
-                 "Passage": (hit["snippet"] or "").replace("\n", " "),
-                 "File": path.name or "—", "Saved at": str(path) if path.name else "—"})
+    if not ai_ready:
+        reason = ("AI is switched off in **Settings → Models & keys**."
+                  if not settings["ai"].get("enabled")
+                  else "No model is reachable — check **Settings → Models & keys**.")
+        st.info(f"Asking needs a model. {reason} The **Find** tab works without one.",
+                icon=":material/info:")
 
-st.markdown(f"**{len(found['hits'])} passage(s)** :gray[· best first]")
-st.dataframe(
-    pd.DataFrame(rows), hide_index=True, height=int(settings["ui"]["table_height"]),
-    column_config={"#": st.column_config.NumberColumn(width="small"),
-                   "Company": st.column_config.TextColumn(width="small"),
-                   "Page": st.column_config.NumberColumn(width="small"),
-                   "Passage": st.column_config.TextColumn(width="large"),
-                   "File": st.column_config.TextColumn(width="small"),
-                   "Saved at": st.column_config.TextColumn(width="medium",
-                                                           help="Where the PDF sits on your disk.")})
+    if not chat:
+        with st.container(border=True, horizontal_alignment="center"):
+            st.space("small")
+            st.markdown("### :material/forum: Ask anything about your filings",
+                        text_alignment="center")
+            st.markdown(":gray[*What did management say about capex?* · *How are margins "
+                        "trending?* · *Which companies mentioned China?*  \n"
+                        "Follow-up questions keep the thread, and every answer cites the passages "
+                        "it came from.]", text_alignment="center")
+            st.space("small")
 
-with st.expander("Read the full pages", icon=":material/article:"):
-    for i, hit in enumerate(found["hits"][:int(keep)], start=1):
-        st.markdown(f"**[{i}] {hit['ticker']} · {hit['category']} · page {hit['page']}**")
-        if hit.get("path"):
-            st.caption(f":material/folder: `{hit['path']}` — page {hit['page']}")
-        st.text(hit["text"][:2000])
-        st.divider()
+    for turn in chat:
+        with st.chat_message(turn["role"]):
+            st.markdown(turn["content"])
+            if turn.get("sources"):
+                with st.expander(f"{len(turn['sources'])} source(s)", icon=":material/article:"):
+                    for i, hit in enumerate(turn["sources"], start=1):
+                        st.markdown(f"**[{i}]** {source_line(hit)}")
+                        st.markdown(f":gray[{hit['snippet']}]")
+                        st.caption(f":material/folder: `{hit.get('path') or '—'}` "
+                                   f"— page {hit['page']}")
+            if turn.get("meta"):
+                st.caption(turn["meta"])
+
+    question = st.chat_input("Ask your filings…", disabled=not ai_ready)
+    if question:
+        chat.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        with st.chat_message("assistant"):
+            started = time.time()
+            with st.status("Thinking…", expanded=True) as status:
+                found = core.smart_search(
+                    question, settings, st.session_state.ask_tickers or None,
+                    st.session_state.ask_types or None, candidates=24,
+                    keep=int(st.session_state.ask_keep),
+                    deadline=float(st.session_state.ask_patience),
+                    progress=status.write, thorough=st.session_state.ask_thorough,
+                    history=chat[:-1])
+                status.update(label=f"Read {found['considered']} passages",
+                              state="complete", expanded=False)
+
+            sources = found["hits"][:int(st.session_state.ask_keep)]
+            if found["answer"]:
+                answer = found["answer"]
+            elif sources:
+                answer = ("I could not get a written answer out of the model, but these passages "
+                          "are the closest matches in your archive — open the sources below.")
+            else:
+                answer = ("Nothing in your archive matches that. Try different words, or check the "
+                          "filters under Options.")
+            for note in found.get("notes", []):
+                answer += f"\n\n:gray[({note})]"
+
+            meta = (f":material/memory: `{settings['ai']['model']}` · {found['tokens']:,} tokens · "
+                    f"{time.time() - started:.0f}s" if found["used_model"] else
+                    ":material/bolt: keyword search only")
+            st.markdown(answer)
+            if sources:
+                with st.expander(f"{len(sources)} source(s)", icon=":material/article:"):
+                    for i, hit in enumerate(sources, start=1):
+                        st.markdown(f"**[{i}]** {source_line(hit)}")
+                        st.markdown(f":gray[{hit['snippet']}]")
+            st.caption(meta)
+
+        chat.append({"role": "assistant", "content": answer, "sources": sources, "meta": meta})
