@@ -124,6 +124,41 @@ def provider_status(settings: dict) -> tuple[bool, str]:
 # 200-company watchlist against a frontier model.
 _RUN = {"tokens": 0}
 LAST_BLOCK: str | None = None
+# Why the last call failed. Without this a quota error, a bad key and a model
+# that simply said nothing all looked identical: "returned no summary".
+LAST_ERROR: str | None = None
+
+
+# Providers rate-limit and go busy; both are temporary and both used to show
+# up as "the model returned no summary".
+TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+
+
+def _send(call):
+    """Make a request, and give a busy provider one second chance."""
+    resp = call()
+    if getattr(resp, "status_code", 0) in TRANSIENT_STATUS:
+        time.sleep(2)
+        resp = call()
+    return resp
+
+
+def _fail(resp) -> tuple[None, int]:
+    """Remember why a provider refused, in words the user can act on."""
+    global LAST_ERROR
+    try:
+        detail = resp.json().get("error", {})
+        message = detail.get("message") or detail.get("type") or resp.text[:200]
+    except (ValueError, AttributeError):
+        message = getattr(resp, "text", "")[:200]
+    hint = {401: "the API key looks wrong or expired",
+            403: "the key is not allowed to use this model",
+            404: "that model name was not found for this provider",
+            429: "the provider is rate-limiting you or the quota is spent"}.get(
+                getattr(resp, "status_code", 0), "")
+    LAST_ERROR = f"HTTP {getattr(resp, 'status_code', '?')}" + (f" — {hint}" if hint else "") + \
+                 (f": {message}" if message else "")
+    return None, 0
 
 
 def start_run() -> None:
@@ -186,14 +221,15 @@ def _blocked_reason(settings: dict) -> str | None:
 
 
 def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
-             system: str | None = None) -> tuple[str | None, int]:
+             system: str | None = None, schema: dict | None = None) -> tuple[str | None, int]:
     """(text, tokens used) from the configured provider. Never raises.
 
     Every call passes through the budget first and is written to the usage
     ledger afterwards, so the spend figures in Settings are what actually
     happened rather than an estimate.
     """
-    global LAST_BLOCK
+    global LAST_BLOCK, LAST_ERROR
+    LAST_ERROR = None
     ai = settings["ai"]
     provider, model = ai["provider"], (ai.get("model") or "").strip()
     if not ai.get("enabled") or not model:
@@ -219,69 +255,104 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
 
     try:
         if provider == "ollama":
-            resp = requests.post(
+            resp = _send(lambda: requests.post(
                 f"{base}/api/generate",
                 # think=False: thinking models (e.g. gemma4) otherwise spend the
                 # whole budget on hidden reasoning and return an empty response.
                 json={"model": model, "prompt": prompt, "stream": False, "think": False,
                       **({"system": system} if system else {}),
+                      **({"format": "json"} if schema else {}),
                       "options": {"temperature": temperature, "num_predict": max_tokens,
                                   "num_ctx": int(ai.get("num_ctx", 2048))}},
-                timeout=timeout)
+                timeout=timeout))
             if resp.status_code != 200:
-                return None, 0
+                return _fail(resp)
             data = resp.json()
             return book(data.get("response", "").strip() or None,
                         data.get("prompt_eval_count", 0), data.get("eval_count", 0))
 
         if provider == "anthropic":
-            resp = requests.post(
+            resp = _send(lambda: requests.post(
                 f"{base}/v1/messages", headers=_auth_headers(provider, key),
                 json={"model": model, "max_tokens": max_tokens, "temperature": temperature,
                       **({"system": system} if system else {}),
                       "messages": [{"role": "user", "content": prompt}]},
-                timeout=timeout)
+                timeout=timeout))
             if resp.status_code != 200:
-                return None, 0
+                return _fail(resp)
             data = resp.json()
             text = "".join(b.get("text", "") for b in data.get("content", []))
             usage = data.get("usage", {})
             return book(text.strip() or None, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
 
         if provider == "google":
-            resp = requests.post(
-                f"{base}/models/{model}:generateContent", params={"key": key}, headers=_JSON,
-                json={"contents": [{"parts": [{"text": prompt}]}],
-                      **({"systemInstruction": {"parts": [{"text": system}]}} if system else {}),
-                      "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}},
-                timeout=timeout)
+            def _gemini(body):
+                return _send(lambda: requests.post(f"{base}/models/{model}:generateContent",
+                                                   params={"key": key}, headers=_JSON, json=body,
+                                                   timeout=timeout))
+
+            gen = {"maxOutputTokens": max_tokens, "temperature": temperature}
+            if schema:
+                # Forced structured output: the model cannot narrate its way
+                # out of a schema. Not every model on this API supports it,
+                # hence the retry below.
+                gen = {**gen, "responseMimeType": "application/json", "responseSchema": schema}
+            body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    "generationConfig": gen}
+            if system:
+                body["systemInstruction"] = {"parts": [{"text": system}]}
+            resp = _gemini(body)
+            if resp.status_code != 200 and schema:  # model without schema support
+                gen = {"maxOutputTokens": max_tokens, "temperature": temperature}
+                body["generationConfig"] = gen
+                resp = _gemini(body)
+            if resp.status_code != 200 and system:
+                # Gemma models are served by the Gemini API but do not accept a
+                # system instruction ("Developer instruction is not enabled"),
+                # so fold it into the prompt and try once more.
+                resp = _gemini({"contents": [{"role": "user",
+                                              "parts": [{"text": f"{system}\n\n{prompt}"}]}],
+                                "generationConfig": gen})
             if resp.status_code != 200:
-                return None, 0
+                return _fail(resp)
             data = resp.json()
             parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
             usage = data.get("usageMetadata", {})
+            prompt_tok = usage.get("promptTokenCount", 0)
+            out_tok = usage.get("candidatesTokenCount", 0)
+            total = usage.get("totalTokenCount", 0)
+            if total > prompt_tok + out_tok:  # Gemma reports only the total
+                out_tok = total - prompt_tok
             return book("".join(p.get("text", "") for p in parts).strip() or None,
-                        usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0))
+                        prompt_tok, out_tok)
 
         # OpenAI, OpenRouter and anything else speaking the OpenAI chat API.
         messages = ([{"role": "system", "content": system}] if system else []) + \
                    [{"role": "user", "content": prompt}]
         body = {"model": model, "temperature": temperature, "max_tokens": max_tokens,
                 "messages": messages}
-        resp = requests.post(f"{base}/chat/completions", headers=_auth_headers(provider, key),
-                             json=body, timeout=timeout)
+        if schema:
+            body["response_format"] = {"type": "json_object"}
+        resp = _send(lambda: requests.post(f"{base}/chat/completions",
+                                           headers=_auth_headers(provider, key), json=body,
+                                           timeout=timeout))
+        if resp.status_code == 400 and schema and "response_format" in resp.text:
+            body.pop("response_format")          # provider without a JSON mode
+            resp = requests.post(f"{base}/chat/completions", headers=_auth_headers(provider, key),
+                                 json=body, timeout=timeout)
         if resp.status_code == 400 and "max_completion_tokens" in resp.text:
             # Newer OpenAI reasoning models renamed the field.
             body["max_completion_tokens"] = body.pop("max_tokens")
             resp = requests.post(f"{base}/chat/completions", headers=_auth_headers(provider, key),
                                  json=body, timeout=timeout)
         if resp.status_code != 200:
-            return None, 0
+            return _fail(resp)
         data = resp.json()
         text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
         usage = data.get("usage", {})
         return book(text.strip() or None, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+        LAST_ERROR = f"{type(exc).__name__}: {exc}"[:200]
         return None, 0
 
 
@@ -294,6 +365,30 @@ FENCE_RE = re.compile(r"```.*?```", re.S)
 
 
 JSON_RE = re.compile(r"\{.*?\}", re.S)
+# Some models narrate their way to an answer. Asking them to fence the answer
+# off is the one thing that reliably separates it from the narration.
+MARKED_RE = re.compile(r"\[ANSWER\](.*?)\[END\]", re.S)
+ANSWER_RULE = ("Write your final answer between [ANSWER] and [END], and write nothing after [END]. "
+               "Think first if you need to, but keep any thinking before [ANSWER].")
+
+
+def _marked(text: str | None) -> str | None:
+    """The last fenced answer block, which is the real one if a model
+    repeated the instructions before getting to it."""
+    if not text:
+        return None
+    blocks = [b.strip() for b in MARKED_RE.findall(text) if b.strip()]
+    return blocks[-1] if blocks else None
+
+# Lines a model writes while reasoning out loud before it answers -- bullets
+# restating the task ("* Constraint 1: ...", "Task: ...", "Input: ...").
+SCRATCHPAD_RE = re.compile(
+    r"^\s*(?:[*\-\u2022]+\s*)?(?:role|task|input|output|constraint\s*\d*|step\s*\d*|goal|"
+    r"analysis|reasoning|plan|note|topic|question|answer\s+format)\s*[:\-]", re.I)
+
+# A line that is just a label and a number is the input being read back,
+# not a sentence: "Market Cap: Rs 16,59,630Cr." Prose after the colon stays.
+DATA_ECHO_RE = re.compile(r"^[A-Za-z][\w &/()'.-]{0,34}:\s*[\u20b9$]?[\d,.\s/%()-]*$")
 
 
 def _json_reply(text: str | None) -> dict | None:
@@ -305,26 +400,41 @@ def _json_reply(text: str | None) -> dict | None:
     """
     if not text:
         return None
-    match = JSON_RE.search(text.replace("```json", " ").replace("```", " "))
-    if not match:
-        return None
-    try:
-        parsed = json.loads(match.group())
-    except ValueError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    body = text.replace("```json", " ").replace("```", " ")
+    # Last match, not first: a model that reasons out loud may quote the
+    # requested shape while restating the task, then answer underneath.
+    for match in reversed(list(JSON_RE.finditer(body))):
+        try:
+            parsed = json.loads(match.group())
+        except ValueError:
+            continue
+        if isinstance(parsed, dict) and any(parsed.values()):
+            # Models are inconsistent about key case ("SUMMARY" vs "summary").
+            return {str(k).lower(): v for k, v in parsed.items()}
+    return None
 
 
 def _clean_answer(text: str | None) -> str | None:
-    """Prose only: no code blocks, no echoed data dump, no template."""
+    """Turn a model's reply into the prose part of it, or None if there isn't any.
+
+    Models differ wildly in what they wrap an answer in. Some think out loud
+    first ("* Topic: ...", "* Constraint: exactly three sentences"), some
+    write the answer itself as an indented bullet list, and some restate the
+    input data back. Keeping only the sentences, and refusing to show
+    anything else, is what makes the same app work across providers.
+    """
     if not text:
         return None
-    text = FENCE_RE.sub(" ", text).replace("*", "")
-    # Models that echo the input indent it; real answers are never indented.
-    text = "\n".join(line for line in text.splitlines() if not line.startswith("    ")).strip()
-    if not text or PLACEHOLDER_RE.search(text) or len(text) < 25:
+    kept = []
+    for line in FENCE_RE.sub(" ", text).splitlines():
+        line = re.sub(r"^\s*[*\-\u2022]+\s*", "", line).strip()
+        if not line or SCRATCHPAD_RE.match(line) or DATA_ECHO_RE.match(line):
+            continue
+        kept.append(line)
+    answer = " ".join(kept).replace("*", "").strip()
+    if not answer or PLACEHOLDER_RE.search(answer) or len(answer) < 25:
         return None
-    return text
+    return answer
 
 
 def _drop_cut_off_sentence(text: str) -> str:
@@ -346,6 +456,13 @@ def _field(text: str, name: str, options: str) -> str | None:
 # --------------------------------------------------------------------------
 
 AI_QUARTERLY_ROWS = ("Sales", "Operating Profit", "OPM", "Net Profit", "EPS")
+
+
+def _schema(*fields: str) -> dict:
+    """A flat object of string fields, in the shape Google's API expects and
+    that every other provider's JSON mode is happy to ignore."""
+    return {"type": "OBJECT", "properties": {f: {"type": "STRING"} for f in fields},
+            "required": list(fields)}
 
 
 def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -> dict:
@@ -372,37 +489,41 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
              f"Ratios: {ratios}\n{quarters}\n"
              f"Strengths: {'; '.join(p[:120] for p in pros[:4]) or 'none'}\n"
              f"Risks: {'; '.join(c[:120] for c in cons[:4]) or 'none'}")
-    system = ('You are an equity analyst. Reply with one JSON object and nothing else, in this form: '
-              '{"verdict": "Positive", "summary": "..."}. '
-              '"verdict" is exactly one of Positive, Neutral or Cautious. '
-              '"summary" is three sentences on the financial position and outlook, quoting the key '
-              'numbers from the data. Use only the data given; never invent a number.')
+    system = ("You are an equity analyst. Use only the data given and never invent a number. "
+              + ANSWER_RULE +
+              " Inside the block write two lines: a line beginning 'VERDICT: ' followed by one "
+              "word (Positive, Neutral or Cautious), then a line beginning 'SUMMARY: ' followed "
+              "by three sentences on the financial position and outlook, quoting the key numbers.")
     budget = settings["ai"]["tokens_analysis"]
-    raw, tokens = complete(f"{facts}\n\nReturn the JSON object now.", budget, settings,
-                           "Company analysis", system=system)
+    raw, tokens = complete(f"{facts}\n\n{system}", budget, settings, "Company analysis",
+                           system=system, schema=_schema("verdict", "summary"))
 
     verdict = summary = None
-    reply = _json_reply(raw)
-    if reply:
-        verdict = _field(str(reply.get("verdict", "")), "", "Positive|Neutral|Cautious") \
-            or _field(f"verdict: {reply.get('verdict', '')}", "verdict", "Positive|Neutral|Cautious")
-        summary = _clean_answer(str(reply.get("summary") or ""))
-    if raw and not summary:  # a model that ignored the JSON but still wrote prose
-        clean = raw.replace("*", "")
+    for candidate in (_marked(raw), raw):
+        if not candidate:
+            continue
+        reply = _json_reply(candidate)
+        if reply:
+            verdict = verdict or _field(f"verdict: {reply.get('verdict', '')}", "verdict",
+                                        "Positive|Neutral|Cautious")
+            summary = summary or _clean_answer(str(reply.get("summary") or ""))
+        clean = candidate.replace("*", "")
         verdict = verdict or _field(clean, "verdict", "Positive|Neutral|Cautious")
-        match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-        summary = _clean_answer(match.group(1) if match else clean)
+        if not summary:
+            match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
+            summary = _clean_answer(match.group(1) if match else clean)
+        if summary:
+            break
 
     if not summary:
-        # One plain retry with no format to imitate: the whole reply is the
-        # answer. This is what rescues models that echo a template.
+        # One plain retry with room to spare: a model that narrates needs the
+        # budget for its narration before it reaches the answer.
         retry, retry_tokens = complete(
             f"{facts}\n\nWrite three sentences on this company's financial position and outlook, "
-            "quoting the key numbers above. Plain prose only: no headings, no labels, no lists, "
-            "and do not repeat this instruction.",
-            budget, settings, "Company analysis (retry)")
+            f"quoting the key numbers above. {ANSWER_RULE}",
+            max(budget * 3, 600), settings, "Company analysis (retry)")
         tokens += retry_tokens
-        summary = _clean_answer(retry)
+        summary = _clean_answer(_marked(retry) or retry)
 
     return {"summary": _drop_cut_off_sentence(summary) if summary else None,
             "verdict": verdict, "tokens": tokens}
@@ -420,7 +541,8 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
               '"summary" is two sentences on what is happening with the company. '
               'Use only the headlines given.')
     raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}\n\nReturn the JSON object now.",
-                           settings["ai"]["tokens_news"], settings, "News digest", system=system)
+                           settings["ai"]["tokens_news"], settings, "News digest", system=system,
+                           schema=_schema("sentiment", "summary"))
 
     sentiment = summary = None
     reply = _json_reply(raw)
@@ -438,7 +560,7 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
             f"Recent headlines about {company_name}:\n{lines}\n\n"
             "Write two sentences on what is happening with this company, using only these "
             "headlines. Plain prose only: no headings, no labels, and do not repeat this instruction.",
-            settings["ai"]["tokens_news"], settings, "News digest (retry)")
+            max(settings["ai"]["tokens_news"] * 3, 500), settings, "News digest (retry)")
         tokens += retry_tokens
         summary = _clean_answer(retry)
     return {"summary": _drop_cut_off_sentence(summary) if summary else None,
@@ -518,7 +640,8 @@ def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict)
         f"(metric: {claim['metric']}, by {claim['horizon']}).\n"
         f"What the reported results since then show:\n{actuals}\n\nReturn the JSON object now."
     )
-    raw, tokens = complete(prompt, 120, settings, "Guidance check", system=system)
+    raw, tokens = complete(prompt, 120, settings, "Guidance check", system=system,
+                           schema=_schema("status", "why"))
     reply = _json_reply(raw)
     if reply:
         status = _field(f"status: {reply.get('status', '')}", "status", "Delivered|Missed|Unclear")

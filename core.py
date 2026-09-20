@@ -755,6 +755,9 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
         result["ai_verdict"] = analysis["verdict"]
         result["ai_model"] = settings["ai"]["model"]
         result["ai_tokens"] = analysis["tokens"]
+        if not result["ai_summary"]:
+            # Why it failed, so the card can say more than "no summary".
+            result["ai_error"] = llm.LAST_ERROR
 
     result["ok"] = True
     return result

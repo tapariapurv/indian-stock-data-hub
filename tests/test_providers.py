@@ -27,6 +27,7 @@ import llm  # noqa: E402
 import settings as cfg  # noqa: E402
 
 SEEN = []  # every request the mock server received
+BUSY = []  # push a marker to make the next call fail with 503
 
 
 class Mock(BaseHTTPRequestHandler):
@@ -58,6 +59,15 @@ class Mock(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
         SEEN.append({"path": self.path, "headers": dict(self.headers), "body": body})
+
+        if BUSY:  # first call goes "busy", as a real provider sometimes does
+            BUSY.pop()
+            self.send_response(503)
+            payload = b'{"error": {"message": "high demand"}}'
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
 
         if self.path.startswith("/api/generate"):                  # Ollama
             return self._send({"response": "local answer", "prompt_eval_count": 30, "eval_count": 12})
@@ -220,6 +230,38 @@ for canned, expect_summary in ((ECHOED, False), (REAL, True)):
 llm.complete = _real_complete
 assert llm._clean_answer("```\ndata dump\n```") is None, "a code block is not an answer"
 print("ok: an echoed template is rejected, a real answer is kept")
+
+# --- structured output, key case, and a busy provider ------------------------
+# Forced JSON is what makes a model that narrates its reasoning usable: one
+# hosted gemma spent 843 tokens thinking out loud and never reached an answer,
+# then produced it in 146 with a schema.
+schema = llm._schema("verdict", "summary")
+for provider, model, base, check in [
+        ("google", "gemini-test", BASE + "/v1beta",
+         lambda b: b["generationConfig"]["responseMimeType"] == "application/json"),
+        ("openai", "mock-model", BASE, lambda b: b["response_format"] == {"type": "json_object"}),
+        ("ollama", "local-model", BASE, lambda b: b["format"] == "json")]:
+    llm.start_run()
+    llm.complete("data", 50, configure(provider, model, base=base), "test", schema=schema)
+    assert check(SEEN[-1]["body"]), (provider, SEEN[-1]["body"])
+print("  ok JSON mode requested in each provider's own way")
+
+assert llm._json_reply('{"VERDICT": "Neutral", "SUMMARY": "Sales rose."}') == \
+    {"verdict": "Neutral", "summary": "Sales rose."}, "key case must not matter"
+assert llm._json_reply('think {"a": ""} then {"verdict": "Positive", "summary": "x"}')["verdict"] \
+    == "Positive", "the last real object wins over an earlier empty one"
+
+BUSY.append(1)
+llm.start_run()
+text, tokens = llm.complete("hello", 50, configure("openai", "mock-model"), "test")
+assert text == "openai answer" and tokens == 250, (text, tokens, llm.LAST_ERROR)
+assert not BUSY, "the 503 should have been consumed by a retry"
+print("  ok a busy provider is retried instead of reported as an empty answer")
+
+bad = configure("openai", "mock-model", base="http://127.0.0.1:9")   # nothing listening
+assert llm.complete("hello", 50, bad, "test") == (None, 0) and llm.LAST_ERROR, \
+    "a failure must leave a reason behind"
+print("  ok a failure records why")
 
 print("ok: six providers answer correctly, spend is booked, and the caps stop paid calls")
 server.shutdown()
