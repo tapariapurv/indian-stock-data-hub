@@ -89,17 +89,22 @@
     <div><span>1</span>What the app does</div>
     <div><span>2</span>Before you start</div>
     <div><span>3</span>Install the app</div>
-    <div><span>4</span>Set up the local AI (optional)</div>
+    <div><span>4</span>Choose a model</div>
     <div><span>5</span>Your first analysis</div>
     <div><span>6</span>Reading the results</div>
-    <div><span>7</span>Excel and Word reports</div>
-    <div><span>8</span>Finding ticker symbols</div>
-    <div><span>9</span>Privacy and how the AI is used</div>
-    <div><span>10</span>Settings for advanced users</div>
-    <div><span>11</span>Troubleshooting</div>
-    <div><span>12</span>Glossary</div>
+    <div><span>7</span>Analysing a whole watchlist</div>
+    <div><span>8</span>All the numbers, in one place</div>
+    <div><span>9</span>What changed since last time</div>
+    <div><span>10</span>What management promised</div>
+    <div><span>11</span>Searching everything you have downloaded</div>
+    <div><span>12</span>Excel and Word reports</div>
+    <div><span>13</span>Finding ticker symbols</div>
+    <div><span>14</span>Privacy and how the AI is used</div>
+    <div><span>15</span>The Settings page</div>
+    <div><span>16</span>Troubleshooting</div>
+    <div><span>17</span>Glossary</div>
   </div>
-  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 9.</div>
+  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 14.</div>
 </section>
 
 <!-- ============================ 1 ============================ -->
@@ -113,7 +118,8 @@
     <div><b>2 · Download</b>The latest filings: concall transcripts, presentations, annual reports, results</div><div class="arrow">→</div>
     <div><b>3 · Extract</b>Every number in those PDFs, with its page and the sentence it came from</div><div class="arrow">→</div>
     <div><b>4 · News</b>Recent headlines from six news sources</div><div class="arrow">→</div>
-    <div><b>5 · Summarise</b>Local AI writes a verdict, an analysis and a news digest</div>
+    <div><b>5 · Summarise</b>Your model writes a verdict, an analysis and a news digest</div><div class="arrow">→</div>
+    <div><b>6 · Keep</b>Everything is saved locally, searchable, and compared with last time</div>
   </div>
 
   <div class="grid2">
@@ -126,6 +132,9 @@
         <li>An AI verdict (Positive, Neutral or Cautious) with a short analysis</li>
         <li>Recent news with an AI digest and sentiment</li>
         <li>The downloaded filings, and every figure found inside them</li>
+        <li>A detailed table lining up every metric against every source that reports it</li>
+        <li>A list of what has changed since the last time you looked</li>
+        <li>What management promised on the earnings call, and whether it happened</li>
         <li>A formatted Excel workbook and a Word report</li>
       </ul>
     </div>
@@ -136,7 +145,7 @@
         <li><strong>Not real-time.</strong> Prices and ratios are as shown on screener.in when you run the analysis.</li>
         <li><strong>Not a trading tool.</strong> It reads public information; it never connects to a broker.</li>
       </ul>
-      <p class="muted" style="margin-top:8pt">The AI part is optional. Without it you still get all the data, charts, news headlines and reports.</p>
+      <p class="muted" style="margin-top:8pt">The AI part is optional. Without it you still get all the data, charts, news headlines, the detailed tables, the archive search and the reports.</p>
     </div>
   </div>
 </section>
@@ -212,42 +221,75 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 4 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 4 · optional</div>
-  <h2>Set up the local AI</h2>
-  <p class="intro">The AI verdicts, analyses and news digests come from <strong>Ollama</strong>, a free program that runs AI models on your own computer. Skip this chapter if you only want the data and reports.</p>
+  <div class="kicker">Chapter 4</div>
+  <h2>Choose a model</h2>
+  <p class="intro">The app works without any model at all. If you want the verdicts, the written analysis, the news digests, the transcript reading and the archive answers, you need to point it at one — and there are four quite different ways to do that. Pick whichever suits your machine, your budget and your privacy needs. You can change your mind at any time from <strong>Settings → Models &amp; keys</strong>; nothing else in the app changes.</p>
 
+  <table>
+    <tr><th style="width:20%">Route</th><th>Good when</th><th>Cost</th><th>Your data</th></tr>
+    <tr><td><strong>A · Ollama</strong></td><td>You want the simplest local setup. This is the default.</td><td>Free</td><td>Never leaves the machine</td></tr>
+    <tr><td><strong>B · A local app</strong></td><td>You already use LM Studio, Jan, llama.cpp or similar.</td><td>Free</td><td>Never leaves the machine</td></tr>
+    <tr><td><strong>C · A hosted API</strong></td><td>You want the strongest models and don't mind paying.</td><td>You pay per token</td><td>Sent to that provider</td></tr>
+    <tr><td><strong>D · Your own server</strong></td><td>You have a GPU box, a work server or a rented instance.</td><td>Whatever it costs you</td><td>Stays on that server</td></tr>
+    <tr><td><strong>E · No model</strong></td><td>You only want the data, tables, charts and reports.</td><td>Free</td><td>Nothing to send</td></tr>
+  </table>
+
+  <h3>Route A · Ollama on this computer</h3>
   <div class="step"><div class="num">1</div><div>
-    <h3>Install Ollama</h3>
-    <table>
-      <tr><th style="width:18%">System</th><th>How</th></tr>
-      <tr><td>Windows</td><td>Download and run <code>OllamaSetup.exe</code> from <a href="https://ollama.com/download">ollama.com/download</a></td></tr>
-      <tr><td>macOS</td><td>Download from <a href="https://ollama.com/download">ollama.com/download</a>, drag <strong>Ollama</strong> into Applications and open it. Or: <code>brew install ollama</code></td></tr>
-      <tr><td>Linux</td><td><code>curl -fsSL https://ollama.com/install.sh | sh</code></td></tr>
-    </table>
+    <h3>Install it</h3>
+    <p>Download from <a href="https://ollama.com/download">ollama.com/download</a>. On Windows and macOS it is an ordinary installer; on Linux run <code>curl -fsSL https://ollama.com/install.sh | sh</code>. Version 0.9 or newer is needed.</p>
   </div></div>
-
   <div class="step"><div class="num">2</div><div>
-    <h3>Make sure it's running</h3>
-    <p>The Ollama desktop app starts automatically; look for the llama icon in your menu bar or system tray. If you installed it from the command line, start it with <code>ollama serve</code> and leave that window open.</p>
-    <p>To check, open <a href="http://localhost:11434">http://localhost:11434</a> in your browser. It should say <em>Ollama is running</em>.</p>
+    <h3>Check it is running</h3>
+    <p>Open <a href="http://localhost:11434">http://localhost:11434</a> in a browser. It should say <em>Ollama is running</em>. On Windows and macOS it starts with the computer; on Linux you may need <code>ollama serve</code>.</p>
   </div></div>
-
   <div class="step"><div class="num">3</div><div>
-    <h3>Download a model</h3>
-    <p>Pick one based on your computer's memory, then run the matching command. This is a one-off download.</p>
+    <h3>Download a model that fits your machine</h3>
+    <p>Browse <a href="https://ollama.com/library">ollama.com/library</a> and pull one with <code>ollama pull &lt;name&gt;</code>. Any chat model works. The thing that matters is size: a model needs to fit in memory alongside everything else you are running, and a rough guide is that the download size is close to the memory it will want.</p>
     <table>
-      <tr><th style="width:22%">Your RAM</th><th style="width:30%">Command</th><th>What to expect</th></tr>
-      <tr><td>16 GB or more</td><td><code>ollama pull gemma4:e2b</code></td><td><span class="tag best">Recommended</span> 7.2 GB download. Accurate, quotes the right numbers, about 2 seconds per summary on a recent laptop.</td></tr>
-      <tr><td>24 GB or more</td><td><code>ollama pull gemma4:e4b</code></td><td>Larger and more capable. The app prefers it when installed.</td></tr>
-      <tr><td>8 GB</td><td><code>ollama pull qwen2.5:0.5b</code></td><td><span class="tag low">Basic</span> 0.4 GB and very fast, but in testing it sometimes called weak numbers strong. Treat its verdicts with extra caution.</td></tr>
+      <tr><th style="width:20%">Your RAM</th><th>Aim for</th><th>What to expect</th></tr>
+      <tr><td>8 GB</td><td>A model of about 1–2 GB</td><td><span class="tag low">Basic</span> Fast, but small models misread financial context — one we tested called a 7.6% return on equity a "strong position". Treat the verdicts with real caution.</td></tr>
+      <tr><td>16 GB</td><td>A model of about 4–8 GB</td><td><span class="tag best">The sweet spot</span> Accurate summaries that quote the right numbers, typically a second or three each.</td></tr>
+      <tr><td>24 GB or more</td><td>A model of 8 GB and up</td><td>Better written analysis and noticeably better at reading transcripts. Slower per answer.</td></tr>
     </table>
-    <p class="muted" style="margin:0">Any other chat model from <a href="https://ollama.com/library">ollama.com/library</a> also works.</p>
+    <p class="muted" style="margin:0">Names and versions change constantly, so this guide deliberately doesn't recommend one. Sort the library by popularity and take a recent general-purpose chat model in your size bracket. Avoid anything labelled <em>embedding</em> — the app hides those, because they cannot write.</p>
+  </div></div>
+  <div class="step"><div class="num">4</div><div>
+    <h3>Point the app at it</h3>
+    <p>Go to <strong>Settings → Models &amp; keys</strong>, choose <em>Ollama (local)</em>, and press <strong>Test connection</strong>. Every model you have pulled appears in the list with its size. Pick one and save. The research sidebar also has a model dropdown, so you can switch between your installed models for a single run without changing the saved setting.</p>
   </div></div>
 
-  <div class="step"><div class="num">4</div><div>
-    <h3>Connect the app</h3>
-    <p>Refresh the app in your browser. The sidebar shows a green <strong>Ollama connected</strong> badge, and the <strong>Local model</strong> list shows the models it found, most capable first. No keys, no sign-up. Downloaded another model later? Just refresh the page.</p>
-  </div></div>
+  <h3>Route B · An app you already run locally</h3>
+  <p>LM Studio, Jan, llama.cpp's server, text-generation-webui and most others can expose an OpenAI-compatible endpoint. Turn that server on in the app's own settings and note the address it prints — commonly something like <code>http://localhost:1234/v1</code>. Then in <strong>Settings → Models &amp; keys</strong> choose <em>Custom / self-hosted</em>, paste that address, leave the key empty, and press <strong>Test connection</strong>. The models that app has loaded will appear in the list.</p>
+
+  <h3>Route C · A hosted API</h3>
+  <p>Anthropic, OpenAI, Google and OpenRouter are supported directly. OpenRouter is worth knowing about: one key gives you access to models from many companies, which is handy if you want to try several without opening several accounts.</p>
+  <table>
+    <tr><th>Provider</th><th>Get a key from</th><th>Environment variable</th></tr>
+    <tr><td>Anthropic (Claude)</td><td>console.anthropic.com</td><td><code>ANTHROPIC_API_KEY</code></td></tr>
+    <tr><td>OpenAI</td><td>platform.openai.com</td><td><code>OPENAI_API_KEY</code></td></tr>
+    <tr><td>Google (Gemini)</td><td>aistudio.google.com</td><td><code>GOOGLE_API_KEY</code></td></tr>
+    <tr><td>OpenRouter</td><td>openrouter.ai</td><td><code>OPENROUTER_API_KEY</code></td></tr>
+  </table>
+  <p>Sign up, create an API key, then paste it into <strong>Settings → Models &amp; keys</strong> and press <strong>Test connection</strong>; the provider's models load into the dropdown. Two notes on keys. They are saved in <code>settings.json</code> beside the app, readable only by your user account and never committed to git — but if you would rather not store one at all, set the environment variable above instead and leave the box empty, because the app always prefers the variable. And a hosted model means the scraped ratios, headlines and retrieved passages are sent to that company; nothing else is.</p>
+
+  <h3>Route D · A server somewhere else</h3>
+  <p>A faster machine on your network, a work server, or a GPU instance you rent by the hour. If it runs Ollama, choose <em>Ollama (local)</em> and replace the address with that machine's, for example <code>http://192.168.1.20:11434</code>. If it speaks the OpenAI API, choose <em>Custom / self-hosted</em> and give it the address and a key if it needs one. Either way the app behaves exactly as it does locally.</p>
+  <p class="muted">Remember that the remote machine must be reachable from this one, and that Ollama only listens to other computers if it was started with <code>OLLAMA_HOST=0.0.0.0</code> on that machine.</p>
+
+  <h3>Route E · No model at all</h3>
+  <p>Turn off <strong>Use a model</strong> in Settings, or just never set one up. You keep every ratio, every quarterly table, every extracted figure, the correlated numbers, the news headlines, the archive keyword search, the saved history and both reports. What you lose is the written verdict, the analysis paragraph, the news digest, transcript reading and the archive's ability to reason about what it finds.</p>
+
+  <h3>Keeping a paid model on a leash</h3>
+  <p>If you choose a hosted API, set your limits before your first big run. Open <strong>Settings → Spending</strong> and you will find three:</p>
+  <table>
+    <tr><th style="width:26%">Limit</th><th>What it does</th></tr>
+    <tr><td>Tokens per run</td><td>The one that actually saves you. A fifty-company watchlist against an expensive model can spend a month's budget in a single click; this stops the run instead.</td></tr>
+    <tr><td>Monthly limit</td><td>A ceiling in your own currency, counted from the first of the month.</td></tr>
+    <tr><td>Monthly token limit</td><td>The same idea counted in tokens, useful when you are on a free tier with an allowance.</td></tr>
+  </table>
+  <p>A call that would cross a limit is refused before it is sent, so a limit cannot be passed by accident; the app tells you plainly that it stopped, and everything else in the run carries on as normal. For the money figures to mean anything, enter what your provider charges per million tokens — input and output — next to its key. The app does not ship a price list, because prices change and a stale one would be worse than none. Local models are always free, are recorded as free, and are never blocked by a limit.</p>
+  <p>For scale: a company review is about 400 tokens, a news digest about 300, and an archive question about 2,800 including the search steps. Answers are cached, so re-running the same company costs nothing at all.</p>
 </section>
 
 <!-- ============================ 5 ============================ -->
@@ -258,11 +300,11 @@ source .venv/bin/activate</code></pre></div>
   <figure><img src="images/overview.jpg" alt="The app after an analysis" style="max-height:76mm; width:auto; margin:0 auto"><figcaption>The app after analysing three companies: sidebar on the left, summary tiles and export buttons at the top, one card per company below.</figcaption></figure>
   <table>
     <tr><th style="width:26%">Sidebar control</th><th>What it does</th></tr>
-    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 8 shows how to find them. Start with 1 to 5 companies.</td></tr>
+    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 13 shows how to find them. Start with 1 to 5 companies.</td></tr>
     <tr><td><strong>Filings to download</strong></td><td>Click to turn each filing type on or off: concall transcripts, investor presentations, annual reports and quarterly results. Fewer types means a faster run.</td></tr>
     <tr><td><strong>Timeframe</strong></td><td>How many of each filing to fetch: latest only (fastest), the last 2 or 4, or all available.</td></tr>
     <tr><td><strong>Local AI switch</strong></td><td>Turns the AI verdicts, analyses and news digests on or off. Greyed out if Ollama isn't running.</td></tr>
-    <tr><td><strong>Local model</strong></td><td>Which of your installed AI models to use, with its size.</td></tr>
+    <tr><td><strong>Model</strong></td><td>Which model to use for this run, from whichever provider you set up in chapter 4. Changing it here applies to this run only.</td></tr>
     <tr><td><strong>Run analysis</strong></td><td>Starts the run. Changes to the controls above only apply when you press it.</td></tr>
     <tr><td><strong>User guide (PDF)</strong></td><td>Opens this guide.</td></tr>
   </table>
@@ -289,13 +331,116 @@ source .venv/bin/activate</code></pre></div>
   <figure><img src="images/financials.jpg" alt="The Financials tab"><figcaption>The Financials tab: latest-quarter figures with their change from the previous quarter, a sales-versus-profit chart, and the full results table.</figcaption></figure>
   <p>Pick a company at the top. The four cards show the latest quarter's sales, net profit, operating margin and EPS. The small arrow shows the change from the previous quarter; the line underneath shows the last 8 quarters. Below are a chart of 13 quarters and the complete table, which you can download as CSV.</p>
 
+  <h3>The other tabs</h3>
+  <p><strong>All numbers</strong> lines every metric up against every source that reports it, and lets you search all the extracted figures. <strong>What changed</strong> compares this run with the last saved one. <strong>Guidance</strong> tracks what management promised on the earnings call. Each has a chapter of its own later in this guide.</p>
+
   <h3>Filings: the source documents</h3>
   <p>For each company: which filings were downloaded (or why one was skipped, for example because it was larger than 25 MB or wasn't a PDF), with links to the originals. Expand <em>All document links</em> to see every document screener.in lists for the company.</p>
 </section>
 
-<!-- ============================ 7 ============================ -->
 <section class="chapter">
   <div class="kicker">Chapter 7</div>
+  <h2>Analysing a whole watchlist</h2>
+  <p class="intro">Typing tickers one at a time is fine for three companies. For thirty, hand the app a file.</p>
+
+  <h3>The file it expects</h3>
+  <p>A CSV or Excel file with a column headed <code>ticker</code>. Anything else in the file is ignored, so your existing watchlist export will usually work as it is. If there is no column called <code>ticker</code>, the app also accepts <code>symbol</code>, <code>scrip</code>, <code>code</code> or <code>NSE code</code>, and failing all of those it reads the first column.</p>
+  <table>
+    <tr><th>ticker</th><th>notes</th></tr>
+    <tr><td>RELIANCE</td><td>core holding</td></tr>
+    <tr><td>TCS</td><td></td></tr>
+    <tr><td>INFY</td><td>watching</td></tr>
+  </table>
+  <p>The sidebar has a <strong>Watchlist template (CSV)</strong> button that downloads exactly this file, already filled in with three examples. Open it in Excel, replace the rows, save, and upload it.</p>
+
+  <h3>Running it</h3>
+  <p>Click <strong>Upload</strong> in the sidebar, choose your file, and press <strong>Run analysis</strong>. The uploaded list replaces whatever is in the Tickers box for that run. Duplicates are removed and anything that isn't a plausible symbol is skipped, so a stray heading row or a blank line does no harm.</p>
+
+  <h3>How long it takes</h3>
+  <p>Budget roughly five to fifteen seconds per company on the first run, depending on how many filings you asked for and how fast your model is. The app pauses briefly between companies on purpose — the sites it reads are free and public, and hammering them is both rude and a good way to get blocked. You can shorten or lengthen that pause in <strong>Settings → Data &amp; scraping</strong>.</p>
+  <p>Second and later runs are far quicker. A filing that has already been read is never read again, and an analysis of unchanged data comes straight back from the cache at no cost — the token counter will say <em>0 tokens this run</em>.</p>
+</section>
+
+<section class="chapter">
+  <div class="kicker">Chapter 8</div>
+  <h2>All the numbers, in one place</h2>
+  <p class="intro">The summary tells you the story. The <strong>All numbers</strong> tab shows you every number behind it, with each source of that number lined up beside the others.</p>
+
+  <h3>What the table shows</h3>
+  <p>One row per metric. Reading across, you get the value screener.in publishes, what the last two quarters reported and the change between them, then how the downloaded filings describe the same metric: how many times it appears, the most recent value, and the lowest, middle and highest of every mention.</p>
+  <table>
+    <tr><th>Column</th><th>What it means</th></tr>
+    <tr><td>Screener ratio</td><td>The figure shown on the company's screener.in page.</td></tr>
+    <tr><td>Latest / Previous quarter</td><td>From the quarterly results table, in ₹ crore or per cent.</td></tr>
+    <tr><td>QoQ</td><td>Change from the previous quarter to the latest one.</td></tr>
+    <tr><td>In filings</td><td>How many times this metric was found across the PDFs.</td></tr>
+    <tr><td>Filing latest</td><td>The first mention in the most recent document.</td></tr>
+    <tr><td>Filing low / median / high</td><td>The spread across every mention.</td></tr>
+    <tr><td>Sources</td><td>Which kinds of filing the number came from.</td></tr>
+  </table>
+
+  <h3>Why the spread matters</h3>
+  <p>A wide gap between <em>low</em> and <em>high</em> is a warning, not an error. It usually means the label caught more than one kind of number — a figure in crore on one page and the same metric as a percentage on another, or a table header that lined up with the wrong column. When something looks odd, use the figures table underneath: it shows every extracted number with its page and the exact sentence it came from, so you can check the source in seconds.</p>
+
+  <h3>Finding a number</h3>
+  <p><strong>Recognised metrics only</strong> is on by default, and limits the table to metrics the app could identify. Turn it off to see every label the extractor produced, including the rough ones. Below, the figures table can be filtered by filing type and category, or searched by text — typing <code>margin</code> finds every mention of margin across every downloaded document for that company.</p>
+  <p>Both tables download as CSV, and the whole thing also arrives as an <strong>All numbers</strong> sheet in the Excel workbook and a cross-checked table in the Word report.</p>
+</section>
+
+<section class="chapter">
+  <div class="kicker">Chapter 9</div>
+  <h2>What changed since last time</h2>
+  <p class="intro">Every analysis is saved. The next time you run the same company, the app tells you what moved.</p>
+
+  <h3>The What changed tab</h3>
+  <p>After a run, this tab compares each company with the last saved analysis of it and lists the differences: ratios that moved, strengths and risks that appeared or disappeared, filings that are new since you last looked, headlines you haven't seen, and any change in the AI's verdict. The first time you analyse a company there is nothing to compare, so the tab says so; run it again next week and it fills up.</p>
+  <p>This comparison is plain arithmetic and text matching. No model is involved, deliberately — a "what changed" list that could invent a change would be worse than no list at all.</p>
+
+  <h3>The History page</h3>
+  <p>The <strong>History</strong> page in the sidebar holds every saved analysis. Pick a company and a date to reopen exactly what the app showed you then: the verdict, the ratios, the strengths and risks, the news and the full correlated table. Above it, a chart plots any ratio across all your saved runs, so you can watch the P/E or the ROE drift over months without keeping a spreadsheet.</p>
+  <p>Each saved analysis also shows what changed between it and the run before it, so you can step back through a company's history one analysis at a time.</p>
+
+  <h3>Getting back to the paper</h3>
+  <p>A saved analysis is only worth having if you can trace it. Under <strong>Where this came from</strong>, every filing behind that run is listed with the file it was saved as, the full path to it on your disk, the span of pages its figures came from, and a link to the original document on the exchange or company website. In the numbers table, each metric carries a <strong>Pages</strong> column listing the exact pages that figure appeared on — so checking a number means opening the PDF and turning to the page, not hunting through sixty of them.</p>
+</section>
+
+<section class="chapter">
+  <div class="kicker">Chapter 10</div>
+  <h2>What management promised</h2>
+  <p class="intro">Every quarter, management says things on the earnings call: margins will improve, growth will pick up, capex will land at a number. Nobody ever checks. This does.</p>
+
+  <h3>Reading the transcript</h3>
+  <p>Open the <strong>Guidance</strong> tab and press <strong>Read the latest transcript</strong>. The app finds the sentences where management commits to a future outcome and files each one as a metric, a commitment and a deadline. You need a concall transcript downloaded for that company, so tick <strong>Concall Transcript</strong> in the sidebar before the run.</p>
+  <p>This is extraction, not judgement, which is exactly what small local models are good at. The app filters the transcript down to the couple of dozen candidate sentences first, so reading a sixty-page transcript costs a few hundred tokens rather than tens of thousands.</p>
+
+  <h3>Checking it later</h3>
+  <p>Once a later quarter has been reported, press <strong>Check against results</strong>. Each commitment from an earlier quarter is graded <span class="tag">Delivered</span>, <span class="tag">Missed</span> or <span class="tag">Unclear</span> against the numbers the app has actually scraped — never against anything the model remembers. The <strong>Delivered</strong> counter at the top is the useful number: it tells you, over time, how often this management does what it says it will.</p>
+  <p>Treat a single grade as a prompt to go and read the transcript yourself, not as a verdict. Treat a pattern across eight quarters as worth knowing.</p>
+</section>
+
+<section class="chapter">
+  <div class="kicker">Chapter 11</div>
+  <h2>Searching everything you have downloaded</h2>
+  <p class="intro">Every filing the app downloads stays on your machine and stays searchable — across companies, with no network and no cost per search.</p>
+
+  <h3>Asking a real question</h3>
+  <p>When a filing is read, its text is stored in a small database alongside the extracted figures. The <strong>Archive</strong> page searches all of it at once. Type a question the way you would ask a colleague — <em>what did management say about capex and expansion plans?</em> — and leave <strong>Let the model do the searching and answer</strong> switched on.</p>
+  <p>Four things then happen, and the model does the two that need judgement:</p>
+  <table>
+    <tr><th style="width:22%">Step</th><th>What happens</th></tr>
+    <tr><td>1 · Vocabulary</td><td>The model lists the words a filing would really use. Ask about "capex" and it adds <em>capital expenditure</em>, <em>expansion plans</em>, <em>growth strategy</em>, <em>investment plans</em>. This is the step plain keyword search cannot do: the gap between your question and a transcript is wording, not logic.</td></tr>
+    <tr><td>2 · Retrieval</td><td>The database finds the pages matching any of those terms and ranks them by relevance.</td></tr>
+    <tr><td>3 · Judgement</td><td>The model reads the shortlist and throws out the coincidences — the page about <em>share capital</em> when you asked about <em>capital expenditure</em>.</td></tr>
+    <tr><td>4 · Answer</td><td>It answers from the passages that survive, quoting the figures and citing each passage as [1], [2] after the claim.</td></tr>
+  </table>
+  <p>On a real Reliance archive, asking about capex returned an answer citing a capital expenditure of about ₹39,000 crore, drawing on both the concall transcript and the annual report — in six seconds, on a laptop, for about 2,800 tokens. The model only ever sees the passages retrieved from your own documents, so the answer is grounded in the filings rather than in whatever it happens to remember about the company.</p>
+  <p>Every result shows which company, which filing and which page it came from, along with where that PDF sits on your disk, so you can always go and read the original. You can narrow a search to particular companies or filing types, and expand any result to read the full page.</p>
+  <p>Switch the toggle off — or run without a model at all — and you still get plain keyword search. It just cannot reason about what it finds.</p>
+</section>
+
+<!-- ============================ 7 ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 12</div>
   <h2>Excel and Word reports</h2>
   <p class="intro">The <strong>Excel workbook</strong> and <strong>Word report</strong> buttons appear above the tabs after a run. Both contain everything from that run.</p>
   <div class="grid2">
@@ -322,7 +467,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 8 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 8</div>
+  <div class="kicker">Chapter 13</div>
   <h2>Finding ticker symbols</h2>
   <p class="intro">The app uses the symbol from the company's page address on screener.in, which is usually its NSE symbol.</p>
   <ol>
@@ -341,7 +486,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 9 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 9</div>
+  <div class="kicker">Chapter 14</div>
   <h2>Privacy and how the AI is used</h2>
   <p class="intro">The AI runs on your computer through Ollama. None of your data is sent to an AI company.</p>
   <h3>What leaves your computer</h3>
@@ -361,34 +506,56 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 10 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 10</div>
-  <h2>Settings for advanced users</h2>
-  <p class="intro">Most people never need these.</p>
-  <h3>Ollama on another address or computer</h3>
-  <p>The app looks for Ollama at <code>http://localhost:11434</code>. To use a different port, or a more powerful computer on your network, set <code>OLLAMA_HOST</code> before starting the app. This is the same setting Ollama itself uses.</p>
+  <div class="kicker">Chapter 15</div>
+  <h2>The Settings page</h2>
+  <p class="intro">Almost everything about the app can be changed from inside it. Your choices are stored in <code>settings.json</code> next to the app, and nothing here can break it permanently — there is a Reset button at the bottom of the last tab.</p>
+
+  <h3>Models &amp; keys</h3>
+  <p>Choose your provider, give it an address and a key if it needs one, and pick a model. <strong>Test connection</strong> tells you immediately whether it works and how many models it can see. Under <strong>Generation limits</strong> you can set how long each kind of reply may be, in tokens; these are deliberately tight, and they are the difference between a tidy three-sentence answer and a surprising bill.</p>
+
+  <h3>Spending</h3>
+  <p>Only relevant if you use a paid provider; a local model is free and is never counted. Here you set a limit per run, a monthly limit in your currency and a monthly token limit, and see exactly what has been spent this month — by provider, by model and by what it was spent on, with a daily chart. A call that would cross a limit is refused before it is sent. Chapter 4 explains the three limits and which one matters most.</p>
+
+  <h3>Data &amp; scraping</h3>
+  <p>The tickers, filing types and timeframe a new run starts with, plus the limits it works under: the largest filing to download, how many pages to scan, how many filings to fetch at once, how long to pause between companies, and how recent news must be. The same tab has switches to turn whole features off — if you never look at news, or never want anything saved, turn it off here and the tabs disappear.</p>
+  <table>
+    <tr><th style="width:38%">Setting</th><th>Default and meaning</th></tr>
+    <tr><td>Largest filing</td><td>25 MB. Anything bigger is skipped rather than downloaded.</td></tr>
+    <tr><td>Pages scanned per PDF</td><td>150. Most filings are well under this, and a document is only ever scanned once.</td></tr>
+    <tr><td>Parallel downloads</td><td>4. Filings fetch at the same time; higher mostly annoys the servers.</td></tr>
+    <tr><td>Pause between companies</td><td>1–2 seconds. Politeness towards free public sites.</td></tr>
+    <tr><td>Headline age / count</td><td>14 days / 8 headlines.</td></tr>
+    <tr><td>Result cache</td><td>60 minutes. Takes effect after a restart; <em>Clear cached results</em> works at once.</td></tr>
+  </table>
+
+  <h3>Appearance</h3>
+  <p>Accent colour, text size, spacing, chart colours, table height, decimal places, whether metrics show sparklines, and which tabs appear on the research page and in what order. You can also rewrite the subtitle under the app's title. If anything ever looks wrong, switch off <strong>Apply my appearance settings</strong> and the app falls straight back to its built-in theme.</p>
+
+  <h3>Storage &amp; history</h3>
+  <p>This is where you decide how long the app remembers things. Each limit can be set to 0, which means keep forever.</p>
+  <table>
+    <tr><th style="width:38%">What</th><th>Default</th></tr>
+    <tr><td>Saved analyses</td><td>180 days, and at most 40 per company. This is what the History page shows.</td></tr>
+    <tr><td>Filing PDFs</td><td>90 days. Deleting these frees the most space; they are downloaded again when needed.</td></tr>
+    <tr><td>Searchable text</td><td>365 days. Keep this longer than the PDFs — it is small, and it is what the Archive page reads.</td></tr>
+  </table>
+  <p>With <strong>Apply these limits automatically</strong> switched on, the clear-out happens quietly when the app starts. You can also run it on demand, clear the caches, or — behind a confirmation — delete every saved analysis and everything indexed.</p>
+
+  <h3>Settings that live outside the app</h3>
+  <p>Two things are still set when you start the app rather than inside it. To run on a different port:</p>
+  <pre><code>python -m streamlit run app.py --server.port 8502</code></pre>
+  <p>And to reach Ollama on another machine you can either type the address into Settings or use the <code>OLLAMA_HOST</code> variable, which is the same one Ollama itself reads:</p>
   <div class="os">
     <div><h4>Windows (PowerShell)</h4><pre><code>$env:OLLAMA_HOST = "192.168.1.20:11434"
 python -m streamlit run app.py</code></pre></div>
     <div><h4>macOS / Linux</h4><pre><code>OLLAMA_HOST=192.168.1.20:11434 \
   python -m streamlit run app.py</code></pre></div>
   </div>
-  <h3>Run on a different port</h3>
-  <pre><code>python -m streamlit run app.py --server.port 8502</code></pre>
-  <h3>Other limits (in <code>app.py</code>)</h3>
-  <table>
-    <tr><th style="width:34%">Setting</th><th>Default and meaning</th></tr>
-    <tr><td><code>MAX_FILE_MB</code></td><td>25. Filings larger than this are skipped.</td></tr>
-    <tr><td><code>CACHE_TTL_SECONDS</code></td><td>3600. How long company results are reused.</td></tr>
-    <tr><td><code>NEWS_MAX_AGE_DAYS</code> / <code>NEWS_MAX_ITEMS</code></td><td>14 / 8. How recent news must be, and how many headlines to keep.</td></tr>
-    <tr><td><code>OLLAMA_MODEL_PREFERENCE</code></td><td>The order in which installed models are suggested.</td></tr>
-  </table>
-  <h3>Clearing saved data</h3>
-  <p>To force a completely fresh run, open the <strong>⋮</strong> menu at the top right of the app and choose <strong>Clear cache</strong>. Downloaded PDFs live in the <code>downloads</code> folder; delete it to free disk space (it's recreated when needed).</p>
 </section>
 
 <!-- ============================ 11 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 11</div>
+  <div class="kicker">Chapter 16</div>
   <h2>Troubleshooting</h2>
   <p class="intro">Find what you see in the left column.</p>
   <h3>Installing and starting</h3>
@@ -403,7 +570,7 @@ python -m streamlit run app.py</code></pre></div>
   <h3>Running an analysis</h3>
   <table>
     <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 8). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
+    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 13). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
     <tr><td>A filing says <em>Skipped</em></td><td>It was over 25 MB, or the link led to a web page rather than a PDF. The rest of the analysis is unaffected.</td></tr>
     <tr><td>"No news in the last 14 days"</td><td>Normal for smaller companies. The news sources simply had nothing that named the company.</td></tr>
     <tr><td>Numbers look out of date</td><td>Results are reused for an hour. Use <strong>⋮ → Clear cache</strong>, then run again.</td></tr>
@@ -412,7 +579,7 @@ python -m streamlit run app.py</code></pre></div>
   <table>
     <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
     <tr><td>Sidebar says <strong>Ollama not detected</strong></td><td>Start Ollama (open the app, or run <code>ollama serve</code>), then refresh the page. Check <a href="http://localhost:11434">localhost:11434</a> says <em>Ollama is running</em>.</td></tr>
-    <tr><td>Connected, but the model list is empty</td><td>No model installed yet: run <code>ollama pull gemma4:e2b</code> (chapter 4, step 3) and refresh.</td></tr>
+    <tr><td>Connected, but the model list is empty</td><td>No model has been downloaded yet. Run <code>ollama pull &lt;name&gt;</code> with a model from ollama.com/library that fits your RAM (chapter 4, route A), then press <strong>Test connection</strong> again.</td></tr>
     <tr><td>"… returned no summary for this ticker"</td><td>Update Ollama to the latest version (0.9 or newer is required), or pick another model from the list.</td></tr>
     <tr><td>The first AI answer is slow</td><td>The model is loading into memory, which can take 10 to 30 seconds. Later answers take a second or two.</td></tr>
     <tr><td>Computer slows down</td><td>The model is too large for your RAM. Choose a smaller one. <code>ollama list</code> shows installed models; <code>ollama rm &lt;name&gt;</code> removes one.</td></tr>
@@ -427,7 +594,7 @@ python -m streamlit run app.py</code></pre></div>
 
 <!-- ============================ 12 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 12</div>
+  <div class="kicker">Chapter 17</div>
   <h2>Glossary</h2>
   <p class="intro">The terms you'll meet in the app, in plain language.</p>
   <dl>

@@ -6,15 +6,19 @@ as a formula. Every <f> in the workbook must be one the exporter built itself.
 """
 import io
 import re
+import sys
 import zipfile
 from pathlib import Path
 
 import pandas as pd
 
-APP = Path(__file__).resolve().parent.parent / "app.py"
-src = APP.read_text(encoding="utf-8").split("# Streamlit UI")[0]  # export code only, no UI
-app = {"__file__": str(APP)}
-exec(compile(src, str(APP), "exec"), app)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import exports as app_mod
+from docx import Document
+
+app = {"build_excel_workbook": app_mod.build_excel_workbook,
+       "build_word_document": app_mod.build_word_document,
+       "_W_ORDER": app_mod._W_ORDER, "Document": Document}
 
 TRUSTED_FORMULA = re.compile(r"^(COUNTA|COUNTIF|SUM|IFERROR)\(|^'[^']+'![A-Z]+\d+$")
 
@@ -41,6 +45,12 @@ ok = {
              "summary": "News digest.", "sentiment": "Mixed", "model": "test-model"},
 }
 failed = {"ticker": "BAD", "ok": False, "company_name": None, "error": "HTTP 404", "error_friendly": None}
+
+from core import correlate_numbers
+correlated = correlate_numbers(ok)
+assert not correlated.empty, "correlated table should not be empty"
+assert (correlated["Metric"] == "ROE").any(), "screener ratios should reach the correlated table"
+assert (correlated["In filings"] > 0).any(), "PDF figures should reach the correlated table"
 
 xlsx = app["build_excel_workbook"]([ok, failed])
 with zipfile.ZipFile(io.BytesIO(xlsx)) as z:
@@ -69,5 +79,5 @@ with zipfile.ZipFile(io.BytesIO(docx)) as z:
             seq = [ranks.index(c.tag) for c in el if c.tag in ranks]
             assert seq == sorted(seq), f"{name}: <{etree.QName(el).localname}> children out of schema order"
             checked += 1
-print(f"ok: {len(formulas)} formulas, all built by the exporter; Word document opens; "
+print(f"ok: {len(correlated)} metrics correlated; {len(formulas)} formulas, all built by the exporter; Word document opens; "
       f"{checked} property blocks in schema order")

@@ -2,17 +2,22 @@
 realistic analysis result injected, so every tab's rendering code executes.
 Catches Streamlit API changes after a dependency upgrade.
 Run: python tests/test_app_smoke.py   (no network or Ollama needed)"""
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
-APP = str(Path(__file__).resolve().parent.parent / "app.py")
+ROOT = Path(__file__).resolve().parent.parent
+# `streamlit run` puts the script's folder on the path; AppTest does not.
+sys.path.insert(0, str(ROOT))
+APP = str(ROOT / "app.py")
 
 at = AppTest.from_file(APP, default_timeout=60).run()
 assert not at.exception, [e.value for e in at.exception]
 assert at.title[0].value == "Indian stock data hub"
+assert at.session_state["settings"], "settings should load"
 assert any(b.label == "Run analysis" for b in at.button), "Run button missing"
 
 quarterly = pd.DataFrame({
@@ -38,6 +43,17 @@ failed = {"ticker": "NOPE", "ok": False, "company_name": None, "error": "HTTP 40
 at.session_state["results"] = [result, failed]
 at.run()
 assert not at.exception, [e.value for e in at.exception]
-assert [t.label for t in at.tabs][:3] == [":material/dashboard: Overview", ":material/bar_chart: Financials",
-                                          ":material/folder_open: Filings"]
-print("ok: app renders the home screen and all three result tabs")
+labels = [t.label for t in at.tabs]
+for expected in ["Overview", "Financials", "All numbers", "Filings"]:
+    assert any(expected in l for l in labels), f"{expected} tab missing from {labels}"
+print(f"ok: app renders the home screen and every result tab ({len(labels)} tabs)")
+
+# Every other page renders too, given the settings the entry point loads.
+import settings as cfg
+
+for page in ["archive_search.py", "history.py", "settings_page.py"]:
+    page_at = AppTest.from_file(str(ROOT / "app_pages" / page), default_timeout=60)
+    page_at.session_state["settings"] = cfg.load()
+    page_at.run()
+    assert not page_at.exception, (page, [e.value for e in page_at.exception])
+print("ok: archive, history and settings pages render")

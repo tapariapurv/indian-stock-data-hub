@@ -1,0 +1,119 @@
+"""Self-check for the archive, retention and batch input.
+
+Runs against a throwaway database, so your real archive is untouched.
+No network and no model needed.  Run: python tests/test_archive.py
+"""
+import io
+import sys
+import tempfile
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import archive  # noqa: E402
+
+tmp = tempfile.TemporaryDirectory()
+archive.DB_PATH = Path(tmp.name) / "test.db"
+archive._has_fts = None
+assert archive.init() in (True, False)
+
+import core  # noqa: E402
+import settings as cfg  # noqa: E402
+
+# --- the extraction cache and full-text index --------------------------------
+pages = [(1, "Management expects margins to improve to 18% by FY27."),
+         (2, "Gross loan book grew to INR 33,287 crores this quarter.")]
+figures = [{"Source": "Concall Transcript", "Label": "Loan Book", "Category": "Loan/Asset Book",
+            "Value": 33287.0, "Currency": "INR", "Unit": "cr", "Page": 2, "Context": pages[1][1]}]
+archive.store_document("sha-1", "DEMO", "Concall Transcript", "/tmp/demo.pdf", figures, pages)
+
+cached = archive.cached_figures("sha-1")
+assert cached and cached[0]["Label"] == "Loan Book", "a parsed file must come back from the cache"
+assert archive.cached_figures("never-seen") is None, "an unknown file must miss the cache"
+assert "margins" in archive.document_text("DEMO", "Concall Transcript")
+
+hits = archive.search("loan book")
+assert hits and hits[0]["ticker"] == "DEMO" and hits[0]["page"] == 2, hits
+assert not archive.search("nothinglikethisexists")
+# A question with punctuation must not be read as search syntax.
+archive.search('what about "margins" (FY27)?')
+assert archive.search("margins", tickers=["OTHER"]) == [], "the ticker filter must apply"
+
+# --- saved analyses and what changed -----------------------------------------
+quarterly = pd.DataFrame({"Metric": ["Sales", "Net Profit"],
+                          "Mar 2026": [100, 12], "Jun 2026": [110, 15]})
+result = {"ticker": "DEMO", "ok": True, "company_name": "Demo Ltd",
+          "metrics": {"ROE": "7.71%"}, "quarterly_df": quarterly, "pros": ["Healthy margins"],
+          "cons": [], "documents": [], "downloaded": {}, "figures": figures,
+          "ai_summary": "Fine.", "ai_verdict": "Neutral", "ai_model": "test", "ai_tokens": 10}
+
+first = core.save_run(result, "first")
+assert first, "a successful result must be saved"
+later = dict(result, metrics={"ROE": "9.10%"}, cons=["New risk"], ai_verdict="Cautious")
+_, changes = core.changes_since_last(later)
+kinds = {c["kind"] for c in changes}
+assert {"Ratio", "Risk", "AI verdict"} <= kinds, kinds
+assert any(c["from"] == "7.71%" and c["to"] == "9.10%" for c in changes)
+
+restored = core.restore_snapshot(archive.get_run(first)["snapshot"])
+assert restored["quarterly_df"] is not None and restored["restored"]
+assert restored["correlated"] is not None and not restored["correlated"].empty
+
+# --- guidance ----------------------------------------------------------------
+claims = [{"metric": "Margin", "claim": "improve to 18%", "horizon": "FY27"}]
+assert archive.save_claims("DEMO", "Jun 2026", claims) == 1
+assert archive.save_claims("DEMO", "Jun 2026", claims) == 0, "the same claim must not double up"
+claim_id = archive.claims_for("DEMO")[0]["id"]
+archive.set_claim_status(claim_id, "Delivered", "Margin reached 18.4%.", "Sep 2026")
+assert archive.claims_for("DEMO")[0]["status"] == "Delivered"
+
+# --- retention ---------------------------------------------------------------
+for i in range(5):
+    archive.save_run("KEEP", f"run {i}", {"ticker": "KEEP", "metrics": {}})
+archive.purge({"keep_runs_days": 0, "keep_documents_days": 0, "keep_text_days": 0,
+               "max_runs_per_ticker": 2})
+assert len(archive.list_runs("KEEP")) == 2, "the per-company cap must apply"
+assert archive.list_runs("DEMO"), "0 days must mean keep forever"
+
+# --- batch input -------------------------------------------------------------
+csv = io.BytesIO(b"ticker,notes\nRELIANCE,big\ntcs,\n,\nnot a ticker!,\nRELIANCE,dup\n")
+csv.name = "watchlist.csv"
+tickers, error = core.tickers_from_upload(csv)
+assert tickers == ["RELIANCE", "TCS"] and error is None, (tickers, error)
+
+other = io.BytesIO(b"Symbol\nINFY\n")
+other.name = "w.csv"
+assert core.tickers_from_upload(other)[0] == ["INFY"], "a 'Symbol' column must work too"
+assert core.tickers_from_upload(io.BytesIO(b"x\n\n"))[0] == [], "junk must not raise"
+
+# --- settings ----------------------------------------------------------------
+s = cfg.load()
+assert s["ai"]["provider"] in cfg.PROVIDERS
+assert cfg.base_url(s, "ollama").startswith("http"), cfg.base_url(s, "ollama")
+assert cfg.base_url({"providers": {"custom": {"base_url": "0.0.0.0:1234"}}}, "custom") \
+    == "http://localhost:1234", "a bind address must be dialled over localhost"
+assert cfg.style_css({"custom_style": False}) == "", "the escape hatch must emit no CSS"
+assert "--primary-color" in cfg.style_css(s["ui"])
+
+print(f"ok: archive caches, searches ({len(hits)} hit), saves history, diffs "
+      f"({len(changes)} changes), tracks guidance, purges, and reads watchlists")
+
+# --- search quality ----------------------------------------------------------
+# The retrieval step must survive a natural question: a filing almost never
+# contains every word someone types, so terms are OR-ed, not AND-ed.
+assert archive.search("what did management say about the loan book?"), \
+    "a natural question must still find the passage"
+assert archive.search("margins", extra_terms=["operating margin", "profitability"]), \
+    "model-suggested terms must widen the search, not break it"
+# Stopwords alone must not match every page in the archive.
+assert archive._fts_query("what about the") == "", "a question of stopwords yields no query"
+
+# Without a model, smart_search degrades to plain retrieval rather than failing.
+plain = core.smart_search("loan book", {**cfg.load(), "ai": {**cfg.load()["ai"], "enabled": False}})
+assert plain["hits"] and plain["answer"] is None and plain["tokens"] == 0, plain
+print("ok: natural-language retrieval works with and without a model")
+
+tmp.cleanup()
