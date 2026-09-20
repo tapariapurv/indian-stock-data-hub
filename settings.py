@@ -41,7 +41,7 @@ DEFAULTS = {
         "temperature": 0.2,
         "num_ctx": 2048,
         "timeout": 60,
-        "tokens_analysis": 180,
+        "tokens_analysis": 220,   # JSON wrapping needs a little more room than plain text
         "tokens_news": 110,
         "tokens_error": 60,
         "tokens_guidance": 320,

@@ -11,6 +11,7 @@ scraped: clean ratios and headlines, never the raw PDF text. That keeps a
 company review at roughly 400 tokens on any provider.
 """
 
+import json
 import re
 import time
 
@@ -184,7 +185,8 @@ def _blocked_reason(settings: dict) -> str | None:
     return None
 
 
-def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") -> tuple[str | None, int]:
+def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
+             system: str | None = None) -> tuple[str | None, int]:
     """(text, tokens used) from the configured provider. Never raises.
 
     Every call passes through the budget first and is written to the usage
@@ -222,6 +224,7 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
                 # think=False: thinking models (e.g. gemma4) otherwise spend the
                 # whole budget on hidden reasoning and return an empty response.
                 json={"model": model, "prompt": prompt, "stream": False, "think": False,
+                      **({"system": system} if system else {}),
                       "options": {"temperature": temperature, "num_predict": max_tokens,
                                   "num_ctx": int(ai.get("num_ctx", 2048))}},
                 timeout=timeout)
@@ -235,6 +238,7 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
             resp = requests.post(
                 f"{base}/v1/messages", headers=_auth_headers(provider, key),
                 json={"model": model, "max_tokens": max_tokens, "temperature": temperature,
+                      **({"system": system} if system else {}),
                       "messages": [{"role": "user", "content": prompt}]},
                 timeout=timeout)
             if resp.status_code != 200:
@@ -248,6 +252,7 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
             resp = requests.post(
                 f"{base}/models/{model}:generateContent", params={"key": key}, headers=_JSON,
                 json={"contents": [{"parts": [{"text": prompt}]}],
+                      **({"systemInstruction": {"parts": [{"text": system}]}} if system else {}),
                       "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}},
                 timeout=timeout)
             if resp.status_code != 200:
@@ -259,8 +264,10 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
                         usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0))
 
         # OpenAI, OpenRouter and anything else speaking the OpenAI chat API.
+        messages = ([{"role": "system", "content": system}] if system else []) + \
+                   [{"role": "user", "content": prompt}]
         body = {"model": model, "temperature": temperature, "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": prompt}]}
+                "messages": messages}
         resp = requests.post(f"{base}/chat/completions", headers=_auth_headers(provider, key),
                              json=body, timeout=timeout)
         if resp.status_code == 400 and "max_completion_tokens" in resp.text:
@@ -284,6 +291,28 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
 # as if it were the analysis.
 PLACEHOLDER_RE = re.compile(r"<[^<>\n]{3,}>")
 FENCE_RE = re.compile(r"```.*?```", re.S)
+
+
+JSON_RE = re.compile(r"\{.*?\}", re.S)
+
+
+def _json_reply(text: str | None) -> dict | None:
+    """The first JSON object in a reply, whatever wrapping came with it.
+
+    Asking for JSON is the one instruction every provider's chat model
+    follows reliably; a two-line text template is not -- one hosted model
+    read the template back verbatim instead of filling it in.
+    """
+    if not text:
+        return None
+    match = JSON_RE.search(text.replace("```json", " ").replace("```", " "))
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group())
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _clean_answer(text: str | None) -> str | None:
@@ -339,26 +368,44 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
                  if str(row["Metric"]).startswith(AI_QUARTERLY_ROWS)]
         quarters = f"Quarterly, Rs Cr ({prev_q} -> {last_q}): " + "; ".join(lines) if lines else ""
 
-    prompt = (
-        f"Equity analyst review of {company_name} ({ticker}). Use ONLY this data; never invent numbers; no markdown.\n"
-        f"Ratios: {ratios}\n{quarters}\n"
-        f"Pros: {'; '.join(p[:120] for p in pros[:4]) or 'none'}\n"
-        f"Cons: {'; '.join(c[:120] for c in cons[:4]) or 'none'}\n"
-        "\nWrite exactly two lines in your own words. Do not repeat these instructions, "
-        "do not use angle brackets, and do not list the data back.\n"
-        "The first line starts with 'VERDICT: ' then one word: Positive, Neutral or Cautious.\n"
-        "The second line starts with 'SUMMARY: ' then three sentences on the financial position "
-        "and outlook, quoting the key numbers."
-    )
-    # Verdict first, so it survives even if the token cap cuts the summary short.
-    raw, tokens = complete(prompt, settings["ai"]["tokens_analysis"], settings, "Company analysis")
-    if not raw:
-        return {"summary": None, "verdict": None, "tokens": tokens}
-    clean = raw.replace("*", "")
-    summary = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-    body = _clean_answer(summary.group(1) if summary else clean)
-    return {"summary": _drop_cut_off_sentence(body) if body else None,
-            "verdict": _field(clean, "verdict", "Positive|Neutral|Cautious"), "tokens": tokens}
+    facts = (f"Company: {company_name} ({ticker})\n"
+             f"Ratios: {ratios}\n{quarters}\n"
+             f"Strengths: {'; '.join(p[:120] for p in pros[:4]) or 'none'}\n"
+             f"Risks: {'; '.join(c[:120] for c in cons[:4]) or 'none'}")
+    system = ('You are an equity analyst. Reply with one JSON object and nothing else, in this form: '
+              '{"verdict": "Positive", "summary": "..."}. '
+              '"verdict" is exactly one of Positive, Neutral or Cautious. '
+              '"summary" is three sentences on the financial position and outlook, quoting the key '
+              'numbers from the data. Use only the data given; never invent a number.')
+    budget = settings["ai"]["tokens_analysis"]
+    raw, tokens = complete(f"{facts}\n\nReturn the JSON object now.", budget, settings,
+                           "Company analysis", system=system)
+
+    verdict = summary = None
+    reply = _json_reply(raw)
+    if reply:
+        verdict = _field(str(reply.get("verdict", "")), "", "Positive|Neutral|Cautious") \
+            or _field(f"verdict: {reply.get('verdict', '')}", "verdict", "Positive|Neutral|Cautious")
+        summary = _clean_answer(str(reply.get("summary") or ""))
+    if raw and not summary:  # a model that ignored the JSON but still wrote prose
+        clean = raw.replace("*", "")
+        verdict = verdict or _field(clean, "verdict", "Positive|Neutral|Cautious")
+        match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
+        summary = _clean_answer(match.group(1) if match else clean)
+
+    if not summary:
+        # One plain retry with no format to imitate: the whole reply is the
+        # answer. This is what rescues models that echo a template.
+        retry, retry_tokens = complete(
+            f"{facts}\n\nWrite three sentences on this company's financial position and outlook, "
+            "quoting the key numbers above. Plain prose only: no headings, no labels, no lists, "
+            "and do not repeat this instruction.",
+            budget, settings, "Company analysis (retry)")
+        tokens += retry_tokens
+        summary = _clean_answer(retry)
+
+    return {"summary": _drop_cut_off_sentence(summary) if summary else None,
+            "verdict": verdict, "tokens": tokens}
 
 
 def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> dict:
@@ -367,21 +414,35 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
     if not headlines:
         return {"summary": None, "sentiment": None, "tokens": 0}
     lines = "\n".join(f"- {h['title']} ({h['source']})" for h in headlines)
-    prompt = (
-        f"Recent headlines about {company_name}:\n{lines}\n"
-        "\nUsing ONLY these headlines, write exactly two lines in your own words. No markdown, "
-        "no angle brackets, and do not repeat these instructions.\n"
-        "The first line starts with 'SENTIMENT: ' then one word: Positive, Mixed or Negative.\n"
-        "The second line starts with 'SUMMARY: ' then two sentences on what is happening."
-    )
-    raw, tokens = complete(prompt, settings["ai"]["tokens_news"], settings, "News digest")
-    if not raw:
-        return {"summary": None, "sentiment": None, "tokens": tokens}
-    clean = raw.replace("*", "")
-    summary = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-    body = _clean_answer(summary.group(1) if summary else clean)
-    return {"summary": _drop_cut_off_sentence(body) if body else None,
-            "sentiment": _field(clean, "sentiment", "Positive|Mixed|Negative"), "tokens": tokens}
+    system = ('Reply with one JSON object and nothing else, in this form: '
+              '{"sentiment": "Mixed", "summary": "..."}. '
+              '"sentiment" is exactly one of Positive, Mixed or Negative. '
+              '"summary" is two sentences on what is happening with the company. '
+              'Use only the headlines given.')
+    raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}\n\nReturn the JSON object now.",
+                           settings["ai"]["tokens_news"], settings, "News digest", system=system)
+
+    sentiment = summary = None
+    reply = _json_reply(raw)
+    if reply:
+        sentiment = _field(f"sentiment: {reply.get('sentiment', '')}", "sentiment",
+                           "Positive|Mixed|Negative")
+        summary = _clean_answer(str(reply.get("summary") or ""))
+    if raw and not summary:
+        clean = raw.replace("*", "")
+        sentiment = sentiment or _field(clean, "sentiment", "Positive|Mixed|Negative")
+        match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
+        summary = _clean_answer(match.group(1) if match else clean)
+    if not summary:
+        retry, retry_tokens = complete(
+            f"Recent headlines about {company_name}:\n{lines}\n\n"
+            "Write two sentences on what is happening with this company, using only these "
+            "headlines. Plain prose only: no headings, no labels, and do not repeat this instruction.",
+            settings["ai"]["tokens_news"], settings, "News digest (retry)")
+        tokens += retry_tokens
+        summary = _clean_answer(retry)
+    return {"summary": _drop_cut_off_sentence(summary) if summary else None,
+            "sentiment": sentiment, "tokens": tokens}
 
 
 def explain_error(ticker: str, error: str, settings: dict) -> tuple[str | None, int]:
@@ -447,81 +508,30 @@ def extract_guidance(company_name: str, quarter: str, transcript_text: str, sett
 def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict) -> tuple[dict, int]:
     """Did what management promised actually happen? Graded against the
     numbers the app scraped, never against the model's own knowledge."""
+    system = ('Reply with one JSON object and nothing else, in this form: '
+              '{"status": "Delivered", "why": "..."}. '
+              '"status" is exactly one of Delivered, Missed or Unclear. '
+              '"why" is one sentence quoting a number from the reported results. '
+              'Judge only against the reported numbers given; never use outside knowledge.')
     prompt = (
-        f"{company_name} management said: \"{claim['claim']}\" (metric: {claim['metric']}, by {claim['horizon']}).\n"
-        f"What the reported results since then show:\n{actuals}\n\n"
-        "\nUsing ONLY those reported numbers, write exactly two lines in your own words. "
-        "No markdown, no angle brackets, and do not repeat these instructions.\n"
-        "The first line starts with 'STATUS: ' then one word: Delivered, Missed or Unclear.\n"
-        "The second line starts with 'WHY: ' then one sentence quoting a number."
+        f"{company_name} management said: \"{claim['claim']}\" "
+        f"(metric: {claim['metric']}, by {claim['horizon']}).\n"
+        f"What the reported results since then show:\n{actuals}\n\nReturn the JSON object now."
     )
-    raw, tokens = complete(prompt, 90, settings, "Guidance check")
+    raw, tokens = complete(prompt, 120, settings, "Guidance check", system=system)
+    reply = _json_reply(raw)
+    if reply:
+        status = _field(f"status: {reply.get('status', '')}", "status", "Delivered|Missed|Unclear")
+        why = _clean_answer(str(reply.get("why") or ""))
+        if status:
+            return {"status": status, "why": _drop_cut_off_sentence(why) if why else None}, tokens
     if not raw:
         return {"status": None, "why": None}, tokens
     clean = raw.replace("*", "")
-    why = re.search(r"WHY:\s*(.*)", clean, re.S | re.I)
-    body = _clean_answer(why.group(1) if why else clean)
+    match = re.search(r"WHY:\s*(.*)", clean, re.S | re.I)
+    body = _clean_answer(match.group(1) if match else clean)
     return {"status": _field(clean, "status", "Delivered|Missed|Unclear"),
             "why": _drop_cut_off_sentence(body) if body else None}, tokens
-
-
-def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
-    """The words a filing would actually use for this question.
-
-    Keyword search fails on vocabulary, not on logic: ask about "capex" and
-    the transcript says "capital expenditure", "greenfield" or "expansion
-    plan". The model supplies those synonyms, the search engine still does
-    the retrieving, and nothing is invented because the terms are only ever
-    used to look things up.
-    """
-    prompt = (
-        f"An analyst is searching Indian company filings (earnings calls, investor presentations, "
-        f"annual reports) for: \"{question}\"\n"
-        "List the words and short phrases that would actually appear in those documents, including "
-        "the formal term, common abbreviations and close synonyms. Indian financial vocabulary. "
-        "No markdown, no explanation. One comma-separated line, at most 8 items."
-    )
-    raw, tokens = complete(prompt, 90, settings, "Archive search")
-    if not raw:
-        return [], tokens
-    line = raw.replace("\n", ",").split(":")[-1]
-    terms = [t.strip(" .-\"'") for t in line.split(",")]
-    return [t for t in terms if 2 < len(t) < 40][:8], tokens
-
-
-RANK_RE = re.compile(r"\d+")
-
-
-def rerank_passages(question: str, snippets: list[dict], settings: dict,
-                    keep: int = 8) -> tuple[list[int], int]:
-    """Which retrieved passages actually answer the question.
-
-    Search returns what matched the words; this drops the coincidences --
-    the page that says "capital" about share capital when the question was
-    about capital expenditure. Returns indexes into `snippets`, best first.
-    """
-    if len(snippets) <= keep:
-        return list(range(len(snippets))), 0
-    listing = "\n".join(
-        f"[{i + 1}] {s['ticker']} {s['category']} p{s['page']}: "
-        f"{' '.join((s.get('snippet') or s['text'])[:220].split())}"
-        for i, s in enumerate(snippets[:30]))
-    prompt = (
-        f"Question: {question}\n\nNumbered passages from company filings:\n{listing}\n\n"
-        f"Which passages genuinely help answer the question? Reply with their numbers only, "
-        f"most useful first, comma-separated, at most {keep}. No other words. "
-        "If none are relevant, reply NONE."
-    )
-    raw, tokens = complete(prompt, 60, settings, "Archive ranking")
-    if not raw or "none" in raw.lower()[:8]:
-        return list(range(min(keep, len(snippets)))), tokens
-    order, seen = [], set()
-    for match in RANK_RE.finditer(raw):
-        index = int(match.group()) - 1
-        if 0 <= index < len(snippets) and index not in seen:
-            seen.add(index)
-            order.append(index)
-    return (order[:keep] or list(range(min(keep, len(snippets))))), tokens
 
 
 def synthesize_search(question: str, snippets: list[dict], settings: dict) -> tuple[str | None, int]:

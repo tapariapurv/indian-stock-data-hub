@@ -117,6 +117,26 @@ for provider, model, expected_text, expected_tokens, expected_path in cases:
         assert sent["headers"].get("Authorization") == "Bearer test-key-123", provider
     print(f"  ok {provider:<11} {tokens:>4} tokens via {expected_path}")
 
+# --- the system message reaches each provider in its own shape ---------------
+# Instructions belong in the system role, away from the data; that separation
+# is most of why a model answers instead of echoing the question back.
+for provider, model, base in [("ollama", "local-model", BASE), ("anthropic", "claude-mock", BASE),
+                              ("openai", "mock-model", BASE),
+                              ("google", "gemini-test", BASE + "/v1beta")]:
+    llm.start_run()
+    llm.complete("data", 50, configure(provider, model, base=base), "test", system="SYSTEM RULES")
+    body = SEEN[-1]["body"]
+    if provider == "ollama":
+        assert body.get("system") == "SYSTEM RULES", body
+    elif provider == "anthropic":
+        assert body.get("system") == "SYSTEM RULES", body
+    elif provider == "google":
+        assert body["systemInstruction"]["parts"][0]["text"] == "SYSTEM RULES", body
+    else:
+        assert body["messages"][0] == {"role": "system", "content": "SYSTEM RULES"}, body
+    assert body.get("messages", [{}])[-1].get("content", "data") == "data" or provider in ("ollama", "google")
+print("  ok system instructions delivered in each provider's own format")
+
 # --- model discovery ---------------------------------------------------------
 for provider, base, expect in [("ollama", BASE, "local-model"), ("anthropic", BASE, "claude-mock"),
                                ("openai", BASE, "mock-model"),
