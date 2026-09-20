@@ -177,6 +177,69 @@ def _fts_query(question: str, extra_terms=()) -> str:
     return " OR ".join(dict.fromkeys(terms))
 
 
+def _distinctive(conn, terms: list[str], total_pages: int) -> list[str]:
+    """Keep the words that carry the question, drop the ones that don't.
+
+    "Which companies mentioned China?" OR-matches "companies" and
+    "mentioned" as well, and those sit on 23% and 8% of the archive against
+    China's 2% -- so the results drown in pages that merely say "companies".
+    Rather than guess a threshold, this keeps the rarest term and anything
+    within three times its frequency, which adapts to whatever is in the
+    archive.
+    """
+    if not terms or total_pages < 20:
+        return terms
+    counted = []
+    for term in terms:
+        try:
+            hits = conn.execute("SELECT COUNT(*) FROM pages WHERE pages MATCH ?",
+                                (term,)).fetchone()[0]
+        except sqlite3.OperationalError:
+            continue
+        if hits:
+            counted.append((hits, term))
+    if not counted:
+        return terms
+    rarest = min(counted)[0]
+    return [term for hits, term in counted
+            if hits <= max(rarest * 3, 1) and hits <= total_pages * 0.25] or [min(counted)[1]]
+
+
+def coverage(question: str, tickers: list[str] | None = None,
+             categories: list[str] | None = None, extra_terms=()) -> tuple[int, dict]:
+    """(pages matched, {company: pages}) across the WHOLE archive.
+
+    Counted in SQL rather than by listing results, so a question like "which
+    companies mentioned China?" is answered from all 121 matching pages
+    instead of the handful the model has time to read.
+    """
+    has_fts = init()
+    query = _fts_query(question, extra_terms)
+    if not query or not has_fts:
+        hits = search(question, tickers, categories, limit=2000, extra_terms=extra_terms)
+        tally: dict[str, int] = {}
+        for hit in hits:
+            tally[hit["ticker"]] = tally.get(hit["ticker"], 0) + 1
+        return len(hits), dict(sorted(tally.items(), key=lambda kv: -kv[1]))
+
+    where, params = ["pages MATCH ?"], []
+    with connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+        query = " OR ".join(_distinctive(conn, query.split(" OR "), total))
+        params.append(query)
+        if tickers:
+            where.append(f"ticker IN ({','.join('?' * len(tickers))})")
+            params += tickers
+        if categories:
+            where.append(f"category IN ({','.join('?' * len(categories))})")
+            params += categories
+        rows = conn.execute(
+            f"SELECT ticker, COUNT(*) AS pages FROM pages WHERE {' AND '.join(where)} "
+            "GROUP BY ticker ORDER BY pages DESC", params).fetchall()
+    tally = {r["ticker"]: r["pages"] for r in rows}
+    return sum(tally.values()), tally
+
+
 def search(question: str, tickers: list[str] | None = None,
            categories: list[str] | None = None, limit: int = 40,
            extra_terms=()) -> list[dict]:
@@ -195,6 +258,11 @@ def search(question: str, tickers: list[str] | None = None,
 
     with connect() as conn:
         if has_fts:
+            total = conn.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+            kept = _distinctive(conn, query.split(" OR "), total)
+            query = " OR ".join(kept)
+            if not query:
+                return []
             sql = ("SELECT ticker, category, page, doc_id, "
                    "snippet(pages, 0, '**', '**', ' … ', 24) AS snippet, text "
                    "FROM pages WHERE pages MATCH ?")

@@ -114,6 +114,38 @@ assert archive._fts_query("what about the") == "", "a question of stopwords yiel
 # Without a model, smart_search degrades to plain retrieval rather than failing.
 plain = core.smart_search("loan book", {**cfg.load(), "ai": {**cfg.load()["ai"], "enabled": False}})
 assert plain["hits"] and plain["answer"] is None and plain["tokens"] == 0, plain
+# --- coverage, common-word filtering and match windows -----------------------
+# The chat once answered "which companies mentioned China?" with two of the
+# twenty-three in the archive, because it saw six passages and because
+# "companies" and "mentioned" matched nearly every page.
+# Frequency filtering needs a corpus big enough for frequencies to mean
+# something, so this builds one: "companies" is everywhere, "China" is rare.
+filler = [(i, f"Page {i}: companies in this sector reported steady results.")
+          for i in range(1, 41)]
+archive.store_document("sha-FILLER", "DELTA", "Annual Report", "/tmp/DELTA.pdf", [], filler)
+for ticker, text in [("ALPHA", "Our China sourcing improved margins this year."),
+                     ("BETA", "Demand from China was weak across companies we track."),
+                     ("GAMMA", "No mention of that market; companies here are domestic.")]:
+    archive.store_document(f"sha-{ticker}", ticker, "Annual Report", f"/tmp/{ticker}.pdf", [],
+                           [(1, text)])
+
+pages, tally = archive.coverage("which companies mentioned china?")
+assert set(tally) == {"ALPHA", "BETA"}, tally
+assert pages == 2, pages
+assert "GAMMA" not in tally, "a page that only says 'companies' must not count as a China match"
+
+sentence = core.coverage_sentence("which companies mentioned china?", pages, tally)
+assert sentence and "2 companies" in sentence and "ALPHA" in sentence, sentence
+assert core.coverage_sentence("what did they say about margins?", pages, tally) is None, \
+    "a narrative question is for the model, not a tally"
+
+# The model must be shown the part of the page that matched, not its opening.
+page = "Opening boilerplate. " * 40 + "Capital expenditure will be Rs 5,000 crore next year."
+focus = core._focus(page, ["capital expenditure"], width=200)
+assert "5,000 crore" in focus and len(focus) < len(page) / 2, focus
+assert "capital expenditure" in focus.lower(), focus
+print("ok: coverage counts the whole archive and passages show the matching part")
+
 print("ok: natural-language retrieval works with and without a model")
 
 tmp.cleanup()

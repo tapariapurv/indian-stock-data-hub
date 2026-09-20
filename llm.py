@@ -732,7 +732,8 @@ def rerank_passages(question: str, snippets: list[dict], settings: dict,
 
 
 def synthesize_search(question: str, snippets: list[dict], settings: dict,
-                      history: list[dict] | None = None) -> tuple[str | None, int]:
+                      history: list[dict] | None = None, coverage: dict | None = None,
+                      matched_pages: int = 0) -> tuple[str | None, int]:
     """Answer a question using only the retrieved passages, each cited.
 
     Structured output, for the same reason as everywhere else: asked in
@@ -742,8 +743,19 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict,
     if not snippets:
         return None, 0
     body = "\n\n".join(
-        f"[{i + 1}] {s['ticker']} · {s['category']} · page {s['page']}:\n{' '.join(s['text'][:450].split())}"
-        for i, s in enumerate(snippets[:6]))
+        f"[{i + 1}] {s['ticker']} · {s['category']} · page {s['page']}:\n"
+        f"{s.get('focus') or ' '.join(s['text'][:450].split())}"
+        for i, s in enumerate(snippets[:8]))
+    # The passages are a sample; this tally is the whole archive. Without it
+    # the model answers "which companies..." from the sample and is wrong.
+    tally = ""
+    if coverage:
+        listed = ", ".join(f"{ticker} ({count})" for ticker, count in list(coverage.items())[:30])
+        tally = (f"\n\nComplete tally from the whole archive (not just the passages above): "
+                 f"{matched_pages} page(s) match, across {len(coverage)} compan(y/ies) — {listed}. "
+                 f"If the question asks which, how many, or whether a company is involved, answer "
+                 f"from this tally and name the companies; the passages are only for detail and "
+                 f"quotes.")
     system = ('Reply with one JSON object and nothing else: {"answer": "..."}. '
               'The answer is three to five sentences, using ONLY the passages given, quoting their '
               'figures and citing each claim as [1], [2]. Where companies differ, say how. '
@@ -753,7 +765,8 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict,
         thread = "Earlier in this conversation:\n" + "\n".join(
             f"{turn['role']}: {' '.join(str(turn['content']).split())[:200]}"
             for turn in history[-4:]) + "\n\n"
-    raw, tokens = complete(f"{thread}Passages from company filings:\n{body}\n\nQuestion: {question}",
+    raw, tokens = complete(f"{thread}Passages from company filings:\n{body}{tally}\n\n"
+                           f"Question: {question}",
                            settings["ai"]["tokens_synthesis"], settings, "Archive answer",
                            system=system, schema=_schema("answer"))
     reply = _json_reply(raw)

@@ -134,8 +134,16 @@ with tab_ask:
     for turn in chat:
         with st.chat_message(turn["role"]):
             st.markdown(turn["content"])
+            if turn.get("coverage"):
+                with st.expander(f"Found in {turn.get('matched_pages', 0)} page(s) across "
+                                 f"{len(turn['coverage'])} compan(y/ies)",
+                                 icon=":material/pie_chart:"):
+                    with st.container(horizontal=True):
+                        for ticker, count in turn["coverage"].items():
+                            st.badge(f"{ticker} · {count}", color="gray")
             if turn.get("sources"):
-                with st.expander(f"{len(turn['sources'])} source(s)", icon=":material/article:"):
+                with st.expander(f"{len(turn['sources'])} source(s) read in full",
+                                 icon=":material/article:"):
                     for i, hit in enumerate(turn["sources"], start=1):
                         st.markdown(f"**[{i}]** {source_line(hit)}")
                         st.markdown(f":gray[{hit['snippet']}]")
@@ -155,15 +163,19 @@ with tab_ask:
             with st.status("Thinking…", expanded=True) as status:
                 found = core.smart_search(
                     question, settings, st.session_state.ask_tickers or None,
-                    st.session_state.ask_types or None, candidates=24,
+                    st.session_state.ask_types or None, candidates=40,
                     keep=int(st.session_state.ask_keep),
                     deadline=float(st.session_state.ask_patience),
                     progress=status.write, thorough=st.session_state.ask_thorough,
                     history=chat[:-1])
-                status.update(label=f"Read {found['considered']} passages",
-                              state="complete", expanded=False)
+                status.update(
+                    label=f"{found['matched_pages']} matching page(s) across "
+                          f"{len(found['coverage'])} compan(y/ies) · read {found['considered']}",
+                    state="complete", expanded=False)
 
             sources = found["hits"][:int(st.session_state.ask_keep)]
+            coverage = found.get("coverage") or {}
+            headline = found.get("headline")
             if found["answer"]:
                 answer = found["answer"]
             elif sources:
@@ -172,6 +184,9 @@ with tab_ask:
             else:
                 answer = ("Nothing in your archive matches that. Try different words, or check the "
                           "filters under Options.")
+            if headline:
+                # Counted, not inferred, so it leads.
+                answer = f"{headline}\n\n{answer}" if found["answer"] else headline
             for note in found.get("notes", []):
                 answer += f"\n\n:gray[({note})]"
 
@@ -179,11 +194,23 @@ with tab_ask:
                     f"{time.time() - started:.0f}s" if found["used_model"] else
                     ":material/bolt: keyword search only")
             st.markdown(answer)
+            if found.get("coverage"):
+                with st.expander(f"Found in {found['matched_pages']} page(s) across "
+                                 f"{len(found['coverage'])} compan(y/ies)",
+                                 icon=":material/pie_chart:"):
+                    st.caption("Every company whose filings match, and how many pages each. The "
+                               "answer above uses this tally for 'which companies' questions, and "
+                               "the passages below for detail.")
+                    with st.container(horizontal=True):
+                        for ticker, count in found["coverage"].items():
+                            st.badge(f"{ticker} · {count}", color="gray")
             if sources:
-                with st.expander(f"{len(sources)} source(s)", icon=":material/article:"):
+                with st.expander(f"{len(sources)} source(s) read in full",
+                                 icon=":material/article:"):
                     for i, hit in enumerate(sources, start=1):
                         st.markdown(f"**[{i}]** {source_line(hit)}")
-                        st.markdown(f":gray[{hit['snippet']}]")
+                        st.markdown(f":gray[{hit.get('focus') or hit['snippet']}]")
             st.caption(meta)
 
-        chat.append({"role": "assistant", "content": answer, "sources": sources, "meta": meta})
+        chat.append({"role": "assistant", "content": answer, "sources": sources, "meta": meta,
+                     "coverage": coverage, "matched_pages": found["matched_pages"]})

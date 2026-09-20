@@ -1104,6 +1104,61 @@ def watchlist_template() -> bytes:
 # Archive search: retrieve, re-rank, answer
 # --------------------------------------------------------------------------
 
+# "Which companies...", "how many companies...", "list the companies that..."
+AGGREGATE_RE = re.compile(
+    r"\b(which|what|how many|list|name|any)\b[^?]{0,40}\b(compan(y|ies)|firms?|tickers?|stocks?)\b",
+    re.I)
+
+
+def coverage_sentence(question: str, matched_pages: int, coverage: dict) -> str | None:
+    """The exact answer to "which companies...", stated from the index.
+
+    A model reading eight passages cannot know what the other hundred say,
+    and a small one will not enumerate a list from a tally either. This
+    comes straight from SQL, so it is complete and always right.
+    """
+    if not coverage or not AGGREGATE_RE.search(question or ""):
+        return None
+    listed = ", ".join(f"**{ticker}** ({count})" for ticker, count in coverage.items())
+    return (f"**{len(coverage)} compan{'y' if len(coverage) == 1 else 'ies'}** in your archive "
+            f"match that, across {matched_pages} page(s) — with the number of matching pages each: "
+            f"{listed}.")
+
+
+def _focus(text: str, terms: list[str], width: int = 420, windows: int = 2) -> str:
+    """The parts of a page that actually matched, not its opening lines.
+
+    Sending the first N characters of a page was the single worst thing the
+    search did: on a 2,600-character page the opening often does not contain
+    the search term at all, so the model was asked to answer from text that
+    had nothing to do with the question.
+    """
+    body = " ".join((text or "").split())
+    if not body:
+        return ""
+    lowered = body.lower()
+    spots = []
+    for term in terms:
+        term = term.strip().lower()
+        if len(term) < 3:
+            continue
+        at = lowered.find(term)
+        if at >= 0:
+            spots.append(at)
+    if not spots:
+        return body[: width * windows]
+
+    spots.sort()
+    picked: list[tuple[int, int]] = []
+    for spot in spots:
+        start, end = max(0, spot - width // 3), min(len(body), spot + width)
+        if picked and start <= picked[-1][1]:        # overlapping: widen the last one
+            picked[-1] = (picked[-1][0], max(picked[-1][1], end))
+        elif len(picked) < windows:
+            picked.append((start, end))
+    return " … ".join(body[start:end] for start, end in picked)
+
+
 def _wide_context(settings: dict) -> dict:
     """Archive prompts carry whole passages, unlike the short ones elsewhere,
     so local models need a bigger window for them. Hosted providers ignore it."""
@@ -1115,7 +1170,7 @@ def _wide_context(settings: dict) -> dict:
 
 
 def smart_search(question: str, settings: dict, tickers=None, categories=None,
-                 candidates: int = 24, keep: int = 6, deadline: float = 60.0,
+                 candidates: int = 40, keep: int = 8, deadline: float = 60.0,
                  progress=None, thorough: bool = False, history=None) -> dict:
     """Answer a question from the archive the way a person would.
 
@@ -1134,7 +1189,8 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
     the page spinning. `progress` is called with a short status line.
     """
     out = {"question": question, "terms": [], "hits": [], "answer": None, "tokens": 0,
-           "considered": 0, "used_model": False, "notes": []}
+           "considered": 0, "used_model": False, "notes": [], "coverage": {},
+           "matched_pages": 0, "headline": None}
     question = (question or "").strip()
     if not question:
         return out
@@ -1158,10 +1214,23 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
             out["notes"].append("the model suggested no extra search terms")
 
     say("Searching your filings…")
-    hits = archive.search(question, tickers, categories, limit=candidates, extra_terms=out["terms"])
+    # Count every match first. A question like "which companies mentioned
+    # China?" is answered from this tally, not from the handful of passages
+    # the model reads -- which is how the chat once found 2 of 23 companies.
+    out["matched_pages"], out["coverage"] = archive.coverage(question, tickers, categories,
+                                                             out["terms"])
+    out["headline"] = coverage_sentence(question, out["matched_pages"], out["coverage"])
+    hits = archive.search(question, tickers, categories, limit=candidates,
+                          extra_terms=out["terms"])
     out["considered"] = len(hits)
     if not hits:
         return out
+
+    # Give the model the part of each page that matched.
+    search_terms = [w for w in re.findall(r"[a-z0-9][a-z0-9'&.-]*", question.lower())
+                    if len(w) > 2 and w not in archive.STOPWORDS] + list(out["terms"])
+    for hit in hits:
+        hit["focus"] = _focus(hit["text"], search_terms)
     out["hits"] = hits[:keep] if keep else hits
     if not use_ai:
         return out
@@ -1181,7 +1250,9 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
         return out
 
     say(f"Reading the {min(len(ranked), keep)} best passages and answering…")
-    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history)
+    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history,
+                                           coverage=out["coverage"],
+                                           matched_pages=out["matched_pages"])
     out["tokens"] += tokens
     out["answer"] = answer
     if not answer:
@@ -1209,7 +1280,9 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
     ranked += [h for i, h in enumerate(hits) if i not in set(order)]  # the rest, still browsable
     out["hits"] = ranked
 
-    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history)
+    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep, history=history,
+                                           coverage=out["coverage"],
+                                           matched_pages=out["matched_pages"])
     out["tokens"] += tokens
     out["answer"] = answer
     return out
