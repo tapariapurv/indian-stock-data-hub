@@ -62,6 +62,25 @@ assert formulas, "expected the exporter's own formulas"
 assert not bad, f"scraped text leaked into formulas: {bad}"
 assert "HYPERLINK" in xml and "evil.example" in xml, "hostile text should survive as plain text"
 
+# Excel offers to "repair" a sheet that has both a worksheet-level autoFilter
+# and a Table over the same range -- the Table already provides the filters.
+with zipfile.ZipFile(io.BytesIO(xlsx)) as z:
+    table_refs = {}
+    for name in [n for n in z.namelist() if n.startswith("xl/tables/")]:
+        xml = z.read(name).decode()
+        table_refs[re.search(r'displayName="([^"]+)"', xml).group(1)] = \
+            re.search(r'<table [^>]*ref="([^"]+)"', xml).group(1)
+    assert table_refs, "expected the exporter's tables"
+    assert len(set(table_refs)) == len(table_refs), f"duplicate table names: {table_refs}"
+    for name in [n for n in z.namelist() if n.startswith("xl/worksheets/sheet")]:
+        sheet_xml = z.read(name).decode()
+        sheet_filter = re.search(r'<autoFilter ref="([^"]+)"', sheet_xml)
+        if sheet_filter and sheet_filter.group(1) in table_refs.values():
+            raise AssertionError(
+                f"{name}: worksheet autoFilter duplicates a Table over {sheet_filter.group(1)}; "
+                "Excel treats that as damage")
+print(f"ok: {len(table_refs)} table(s), no filter conflicts")
+
 docx = app["build_word_document"]([ok, failed])
 app["Document"](io.BytesIO(docx))
 

@@ -343,6 +343,13 @@ def _xl_correlated_sheet(wb, results):
         df = r.get("correlated")
         if df is None:
             df = correlate_numbers(r)
+        if df is None or df.empty:
+            continue
+        # Recognised metrics only, as the app shows by default. The extractor
+        # also produces a long tail of rough labels; every one of those numbers
+        # is still on the Figures sheet, with its page and source sentence.
+        if "Identified" in df.columns:
+            df = df[df["Identified"]]
         for _, row in df.iterrows():
             rows.append((r["ticker"], row))
     if not rows:
@@ -353,9 +360,10 @@ def _xl_correlated_sheet(wb, results):
             ("Filing low", 13), ("Filing median", 14), ("Filing high", 13), ("Unit", 8), ("Sources", 34), ("Pages", 18)]
     _xl_sheet_setup(ws, {get_column_letter(i + 1): w for i, (_, w) in enumerate(cols)}, ACCENT)
     _xl_put(ws, 1, 1, "All numbers, correlated", font=SERIF, size=16, bold=True)
-    _xl_put(ws, 2, 1, "One row per metric. 'Screener' is the published ratio, the quarter columns come from the "
-                      "results table, and the filing columns summarise every mention of that metric in the PDFs -- "
-                      "a wide low-to-high spread means the label caught more than one kind of number.",
+    _xl_put(ws, 2, 1, "One row per recognised metric. 'Screener' is the published ratio, the quarter columns come "
+                      "from the results table, and the filing columns summarise every mention of that metric in the "
+                      "PDFs -- a wide low-to-high spread means the label caught more than one kind of number. "
+                      "Every extracted number, including the unrecognised ones, is on the Figures sheet.",
             size=9, italic=True, color=MUTED)
     ws.row_dimensions[1].height = 26
     for j, (name, _) in enumerate(cols, start=1):
@@ -377,7 +385,6 @@ def _xl_correlated_sheet(wb, results):
     table.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
     ws.add_table(table)
     ws.freeze_panes = "C5"
-    ws.auto_filter.ref = table.ref
 
 
 def _xl_figures_sheet(wb, results):
