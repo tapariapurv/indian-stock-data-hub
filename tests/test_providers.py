@@ -176,6 +176,31 @@ s = configure("openai", "mock-model", price_in=3.0, price_out=15.0)
 s["budget"].update(enabled=False, max_tokens_per_run=1)
 assert llm.complete("hello", 50, s, kind="test")[0], "a disabled budget imposes nothing"
 
+# --- a model that echoes the template instead of answering -------------------
+# Seen in the wild from a hosted gemma-4-31b: it replied with the literal
+# placeholder plus a dump of the input, which was shown to the user as though
+# it were the analysis. A placeholder must never reach the page.
+ECHOED = ("VERDICT: Positive\n"
+          "SUMMARY: <3 sentences on financial position and outlook, citing key numbers>\n\n"
+          "    Market Cap: 16,59,630Cr.\n    Current Price: 1,226.\n    P/E: 42.3.")
+REAL = ("VERDICT: Cautious\nSUMMARY: Reliance trades at a P/E of 42.3 against a return on equity "
+        "of just 7.71%. Sales rose 15.4% in the latest quarter. The valuation leaves little room "
+        "for disappointment.")
+
+_real_complete = llm.complete
+for canned, expect_summary in ((ECHOED, False), (REAL, True)):
+    llm.complete = lambda *a, canned=canned, **k: (canned, 289)
+    out = llm.analyze("RELIANCE", "Reliance Industries Ltd", {"ROE": "7.71%"}, None, [], [], cfg.load())
+    assert bool(out["summary"]) is expect_summary, (canned[:40], out["summary"])
+    if not expect_summary:
+        assert out["summary"] is None, f"a template echo reached the page: {out['summary']!r}"
+
+    news = llm.summarize_news("Reliance", [{"title": "x", "source": "ET"}], cfg.load())
+    assert bool(news["summary"]) is expect_summary, news["summary"]
+llm.complete = _real_complete
+assert llm._clean_answer("```\ndata dump\n```") is None, "a code block is not an answer"
+print("ok: an echoed template is rejected, a real answer is kept")
+
 print("ok: six providers answer correctly, spend is booked, and the caps stop paid calls")
 server.shutdown()
 tmp.cleanup()

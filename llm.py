@@ -278,6 +278,26 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other") 
         return None, 0
 
 
+# An answer that still contains <angle brackets> is the template being read
+# back rather than filled in -- some models do this, and without this check a
+# placeholder like "<3 sentences on financial position>" was shown to the user
+# as if it were the analysis.
+PLACEHOLDER_RE = re.compile(r"<[^<>\n]{3,}>")
+FENCE_RE = re.compile(r"```.*?```", re.S)
+
+
+def _clean_answer(text: str | None) -> str | None:
+    """Prose only: no code blocks, no echoed data dump, no template."""
+    if not text:
+        return None
+    text = FENCE_RE.sub(" ", text).replace("*", "")
+    # Models that echo the input indent it; real answers are never indented.
+    text = "\n".join(line for line in text.splitlines() if not line.startswith("    ")).strip()
+    if not text or PLACEHOLDER_RE.search(text) or len(text) < 25:
+        return None
+    return text
+
+
 def _drop_cut_off_sentence(text: str) -> str:
     """If the token cap cut the reply mid-sentence, keep complete sentences only."""
     text = (text or "").strip()
@@ -324,8 +344,11 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
         f"Ratios: {ratios}\n{quarters}\n"
         f"Pros: {'; '.join(p[:120] for p in pros[:4]) or 'none'}\n"
         f"Cons: {'; '.join(c[:120] for c in cons[:4]) or 'none'}\n"
-        "Reply exactly:\nVERDICT: <Positive|Neutral|Cautious>\n"
-        "SUMMARY: <3 sentences on financial position and outlook, citing key numbers>"
+        "\nWrite exactly two lines in your own words. Do not repeat these instructions, "
+        "do not use angle brackets, and do not list the data back.\n"
+        "The first line starts with 'VERDICT: ' then one word: Positive, Neutral or Cautious.\n"
+        "The second line starts with 'SUMMARY: ' then three sentences on the financial position "
+        "and outlook, quoting the key numbers."
     )
     # Verdict first, so it survives even if the token cap cuts the summary short.
     raw, tokens = complete(prompt, settings["ai"]["tokens_analysis"], settings, "Company analysis")
@@ -333,7 +356,8 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
         return {"summary": None, "verdict": None, "tokens": tokens}
     clean = raw.replace("*", "")
     summary = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-    return {"summary": _drop_cut_off_sentence(summary.group(1) if summary else clean) or None,
+    body = _clean_answer(summary.group(1) if summary else clean)
+    return {"summary": _drop_cut_off_sentence(body) if body else None,
             "verdict": _field(clean, "verdict", "Positive|Neutral|Cautious"), "tokens": tokens}
 
 
@@ -345,15 +369,18 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
     lines = "\n".join(f"- {h['title']} ({h['source']})" for h in headlines)
     prompt = (
         f"Recent headlines about {company_name}:\n{lines}\n"
-        "Using ONLY these headlines, no markdown, reply exactly:\n"
-        "SENTIMENT: <Positive|Mixed|Negative>\nSUMMARY: <2 sentences on what is happening with the company>"
+        "\nUsing ONLY these headlines, write exactly two lines in your own words. No markdown, "
+        "no angle brackets, and do not repeat these instructions.\n"
+        "The first line starts with 'SENTIMENT: ' then one word: Positive, Mixed or Negative.\n"
+        "The second line starts with 'SUMMARY: ' then two sentences on what is happening."
     )
     raw, tokens = complete(prompt, settings["ai"]["tokens_news"], settings, "News digest")
     if not raw:
         return {"summary": None, "sentiment": None, "tokens": tokens}
     clean = raw.replace("*", "")
     summary = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-    return {"summary": _drop_cut_off_sentence(summary.group(1) if summary else clean) or None,
+    body = _clean_answer(summary.group(1) if summary else clean)
+    return {"summary": _drop_cut_off_sentence(body) if body else None,
             "sentiment": _field(clean, "sentiment", "Positive|Mixed|Negative"), "tokens": tokens}
 
 
@@ -423,16 +450,19 @@ def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict)
     prompt = (
         f"{company_name} management said: \"{claim['claim']}\" (metric: {claim['metric']}, by {claim['horizon']}).\n"
         f"What the reported results since then show:\n{actuals}\n\n"
-        "Using ONLY those reported numbers, no markdown, reply exactly:\n"
-        "STATUS: <Delivered|Missed|Unclear>\nWHY: <one sentence citing a number>"
+        "\nUsing ONLY those reported numbers, write exactly two lines in your own words. "
+        "No markdown, no angle brackets, and do not repeat these instructions.\n"
+        "The first line starts with 'STATUS: ' then one word: Delivered, Missed or Unclear.\n"
+        "The second line starts with 'WHY: ' then one sentence quoting a number."
     )
     raw, tokens = complete(prompt, 90, settings, "Guidance check")
     if not raw:
         return {"status": None, "why": None}, tokens
     clean = raw.replace("*", "")
     why = re.search(r"WHY:\s*(.*)", clean, re.S | re.I)
+    body = _clean_answer(why.group(1) if why else clean)
     return {"status": _field(clean, "status", "Delivered|Missed|Unclear"),
-            "why": _drop_cut_off_sentence(why.group(1) if why else clean) or None}, tokens
+            "why": _drop_cut_off_sentence(body) if body else None}, tokens
 
 
 def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
@@ -511,7 +541,8 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict) -> tu
         "what is missing rather than guessing."
     )
     raw, tokens = complete(prompt, settings["ai"]["tokens_synthesis"], settings, "Archive answer")
-    return (_drop_cut_off_sentence(raw) if raw else None), tokens
+    body = _clean_answer(raw)
+    return (_drop_cut_off_sentence(body) if body else None), tokens
 
 
 def token_note(tokens: int, generated_at: float, run_started: float) -> str:

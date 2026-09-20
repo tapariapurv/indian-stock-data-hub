@@ -101,7 +101,10 @@ def company_card(r: dict, run_started: float = 0.0, show_news: bool = True):
             st.caption(f":material/memory: Written by `{r.get('ai_model')}` from the scraped data below · "
                        f"{llm.token_note(r.get('ai_tokens', 0), r.get('ai_at', 0), run_started)}")
         elif r.get("ai_model"):
-            st.caption(f":material/warning: `{r['ai_model']}` returned no summary for this ticker.")
+            st.caption(f":material/warning: `{r['ai_model']}` did not return a usable summary — it "
+                       "repeated the instructions or wrote nothing, so the answer was discarded "
+                       "rather than shown. Try another model, or raise the reply limit in "
+                       "**Settings → Generation limits**.")
 
         if r.get("metrics"):
             items = list(r["metrics"].items())
