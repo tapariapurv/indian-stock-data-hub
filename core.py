@@ -1107,11 +1107,16 @@ def watchlist_template() -> bytes:
 def _wide_context(settings: dict) -> dict:
     """Archive prompts carry whole passages, unlike the short ones elsewhere,
     so local models need a bigger window for them. Hosted providers ignore it."""
-    return {**settings, "ai": {**settings["ai"], "num_ctx": max(8192, int(settings["ai"]["num_ctx"]))}}
+    return {**settings, "ai": {**settings["ai"],
+                               "num_ctx": max(8192, int(settings["ai"]["num_ctx"])),
+                               # Fail fast: three steps behind one spinner must
+                               # not add up to minutes if a provider is busy.
+                               "timeout": min(int(settings["ai"].get("timeout", 60)), 30)}}
 
 
 def smart_search(question: str, settings: dict, tickers=None, categories=None,
-                 candidates: int = 30, keep: int = 8) -> dict:
+                 candidates: int = 24, keep: int = 6, deadline: float = 60.0,
+                 progress=None, thorough: bool = False) -> dict:
     """Answer a question from the archive the way a person would.
 
     Four steps, and the model is used for the two that need judgement:
@@ -1119,19 +1124,69 @@ def smart_search(question: str, settings: dict, tickers=None, categories=None,
     1. It suggests the vocabulary a filing would really use -- "capital
        expenditure", "greenfield" -- because the gap between a question and
        a transcript is wording, not logic.
-    2. SQLite retrieves the passages, ranked by relevance.
-    3. The model throws out the coincidental matches: the page about share
-       capital when the question was about capital expenditure.
-    4. It answers from the passages that survive, citing each one.
+    2. SQLite retrieves the passages, ranked by relevance. This part is
+       instant, and it works with no model at all.
+    3. The model throws out the coincidental matches.
+    4. It answers from what survives, citing each passage.
 
-    With no model configured this degrades to step 2 alone, which is still a
-    perfectly good search -- it just can't reason about what it found.
+    Every model step is optional and time-boxed: if the provider is slow or
+    busy, the search returns the passages it already has rather than leaving
+    the page spinning. `progress` is called with a short status line.
     """
     out = {"question": question, "terms": [], "hits": [], "answer": None, "tokens": 0,
-           "considered": 0, "used_model": False}
+           "considered": 0, "used_model": False, "notes": []}
     question = (question or "").strip()
     if not question:
         return out
+
+    started = time.time()
+    left = lambda: deadline - (time.time() - started)  # noqa: E731
+    use_ai = ai_signature(settings)[0]
+    deep = _wide_context(settings)
+
+    def say(message):
+        if progress:
+            progress(message)
+
+    # A one- or two-word query is already the vocabulary; expanding it wastes
+    # a call and a couple of hundred tokens.
+    if thorough and use_ai and len(question.split()) > 2 and left() > 15:
+        say("Working out what a filing would call this…")
+        out["terms"], tokens = llm.expand_query(question, deep)
+        out["tokens"] += tokens
+        if not out["terms"]:
+            out["notes"].append("the model suggested no extra search terms")
+
+    say("Searching your filings…")
+    hits = archive.search(question, tickers, categories, limit=candidates, extra_terms=out["terms"])
+    out["considered"] = len(hits)
+    if not hits:
+        return out
+    out["hits"] = hits[:keep] if keep else hits
+    if not use_ai:
+        return out
+
+    out["used_model"] = True
+    ranked = hits
+    if thorough and left() > 15:
+        say(f"Reading {min(len(hits), candidates)} passages and picking the best…")
+        order, tokens = llm.rerank_passages(question, hits, deep, keep=keep)
+        out["tokens"] += tokens
+        ranked = [hits[i] for i in order]
+        ranked += [h for i, h in enumerate(hits) if i not in set(order)]
+    out["hits"] = ranked
+
+    if left() < 10:
+        out["notes"].append("ran out of time before the model could write an answer")
+        return out
+
+    say(f"Reading the {min(len(ranked), keep)} best passages and answering…")
+    answer, tokens = llm.synthesize_search(question, ranked[:keep], deep)
+    out["tokens"] += tokens
+    out["answer"] = answer
+    if not answer:
+        out["notes"].append(llm.LAST_ERROR or "the model returned no answer")
+    return out
 
     use_ai = ai_signature(settings)[0]
     deep = _wide_context(settings)

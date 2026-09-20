@@ -488,6 +488,34 @@ def purge(storage: dict) -> dict:
     return removed
 
 
+def drop_unusable(is_usable) -> int:
+    """Strip summaries saved before the app learned to reject them.
+
+    Only the summary text is cleared; the ratios, filings and news of that
+    saved analysis are untouched, so history stays intact.
+    """
+    init()
+    fixed = 0
+    with connect() as conn:
+        rows = conn.execute("SELECT id, snapshot FROM runs").fetchall()
+        for row in rows:
+            try:
+                snap = json.loads(row["snapshot"])
+            except ValueError:
+                continue
+            changed = False
+            if snap.get("ai_summary") and not is_usable(snap["ai_summary"]):
+                snap["ai_summary"], changed = None, True
+            news = snap.get("news") or {}
+            if news.get("summary") and not is_usable(news["summary"]):
+                news["summary"], changed = None, True
+            if changed:
+                conn.execute("UPDATE runs SET snapshot=? WHERE id=?",
+                             (json.dumps(snap, default=str), row["id"]))
+                fixed += 1
+    return fixed
+
+
 def clear_all() -> None:
     """Forget everything: the index, saved analyses and guidance."""
     with connect() as conn:

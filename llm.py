@@ -437,6 +437,15 @@ def _clean_answer(text: str | None) -> str | None:
     return answer
 
 
+def is_usable(text: str | None) -> bool:
+    """Is this fit to show a user as an answer?
+
+    Applied when rendering, not just when parsing: an answer stored before
+    this check existed must not reappear just because it is on disk.
+    """
+    return _clean_answer(text) is not None
+
+
 def _drop_cut_off_sentence(text: str) -> str:
     """If the token cap cut the reply mid-sentence, keep complete sentences only."""
     text = (text or "").strip()
@@ -494,7 +503,9 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
               " Inside the block write two lines: a line beginning 'VERDICT: ' followed by one "
               "word (Positive, Neutral or Cautious), then a line beginning 'SUMMARY: ' followed "
               "by three sentences on the financial position and outlook, quoting the key numbers.")
-    budget = settings["ai"]["tokens_analysis"]
+    # A verbose model spends its first hundred tokens restating the task, so
+    # the floor here is what stops a tight user setting from starving it.
+    budget = max(int(settings["ai"]["tokens_analysis"]), 320)
     raw, tokens = complete(f"{facts}\n\n{system}", budget, settings, "Company analysis",
                            system=system, schema=_schema("verdict", "summary"))
 
@@ -541,7 +552,8 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
               '"summary" is two sentences on what is happening with the company. '
               'Use only the headlines given.')
     raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}\n\nReturn the JSON object now.",
-                           settings["ai"]["tokens_news"], settings, "News digest", system=system,
+                           max(int(settings["ai"]["tokens_news"]), 260), settings, "News digest",
+                           system=system,
                            schema=_schema("sentiment", "summary"))
 
     sentiment = summary = None
@@ -657,25 +669,92 @@ def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict)
             "why": _drop_cut_off_sentence(body) if body else None}, tokens
 
 
+def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
+    """The words a filing would actually use for this question.
+
+    Keyword search fails on vocabulary, not on logic: ask about "capex" and
+    the transcript says "capital expenditure", "greenfield" or "expansion
+    plan". The model supplies those synonyms, the search engine still does
+    the retrieving, and nothing is invented because the terms are only ever
+    used to look things up.
+    """
+    prompt = (
+        f"An analyst is searching Indian company filings (earnings calls, investor presentations, "
+        f"annual reports) for: \"{question}\"\n"
+        "List the words and short phrases that would actually appear in those documents, including "
+        "the formal term, common abbreviations and close synonyms. Indian financial vocabulary."
+    )
+    system = ('Reply with one JSON object and nothing else: {"terms": "a, comma, separated, list"}. '
+              "At most 8 items, no explanation.")
+    raw, tokens = complete(prompt, max(160, settings["ai"]["tokens_news"]), settings,
+                           "Archive search", system=system, schema=_schema("terms"))
+    if not raw:
+        return [], tokens
+    reply = _json_reply(raw)
+    line = str(reply.get("terms", "")) if reply else raw.replace("\n", ",").split(":")[-1]
+    terms = [term.strip(" .-\"'*[]") for term in line.split(",")]
+    return [term for term in terms if 2 < len(term) < 40][:8], tokens
+
+
+RANK_RE = re.compile(r"\d+")
+
+
+def rerank_passages(question: str, snippets: list[dict], settings: dict,
+                    keep: int = 8) -> tuple[list[int], int]:
+    """Which retrieved passages actually answer the question.
+
+    Search returns what matched the words; this drops the coincidences --
+    the page that says "capital" about share capital when the question was
+    about capital expenditure. Returns indexes into `snippets`, best first.
+    """
+    if len(snippets) <= keep:
+        return list(range(len(snippets))), 0
+    listing = "\n".join(
+        f"[{i + 1}] {s['ticker']} {s['category']} p{s['page']}: "
+        f"{' '.join((s.get('snippet') or s['text'])[:160].split())}"
+        for i, s in enumerate(snippets[:15]))
+    system = ('Reply with one JSON object and nothing else: {"passages": "3, 1, 7"} -- the numbers '
+              f"of the passages that genuinely help, most useful first, at most {keep}. "
+              'Use {"passages": ""} if none are relevant.')
+    raw, tokens = complete(f"Question: {question}\n\nNumbered passages from company filings:\n{listing}",
+                           200, settings, "Archive ranking", system=system, schema=_schema("passages"))
+    if not raw:
+        return list(range(min(keep, len(snippets)))), tokens
+    reply = _json_reply(raw)
+    picked = str(reply.get("passages", "")) if reply else raw
+    order, seen = [], set()
+    for match in RANK_RE.finditer(picked):
+        index = int(match.group()) - 1
+        if 0 <= index < len(snippets) and index not in seen:
+            seen.add(index)
+            order.append(index)
+    return (order[:keep] or list(range(min(keep, len(snippets))))), tokens
+
+
 def synthesize_search(question: str, snippets: list[dict], settings: dict) -> tuple[str | None, int]:
-    """Answer a question across filings using only the retrieved passages,
-    each tagged so the answer can cite which company and document it came from."""
+    """Answer a question using only the retrieved passages, each cited.
+
+    Structured output, for the same reason as everywhere else: asked in
+    prose, a model that narrates will spend the whole budget restating the
+    question before it answers.
+    """
     if not snippets:
         return None, 0
     body = "\n\n".join(
-        f"[{i + 1}] {s['ticker']} · {s['category']} · page {s['page']}:\n{' '.join(s['text'][:700].split())}"
-        for i, s in enumerate(snippets[:8]))
-    prompt = (
-        f"Passages from company filings:\n{body}\n\n"
-        f"Question: {question}\n\n"
-        "Answer as an equity analyst would, in 3 to 5 sentences, using ONLY these passages. "
-        "No markdown. Quote the figures and cite the passage as [1], [2] after each claim. "
-        "Where companies differ, say how. If the passages do not answer the question, say exactly "
-        "what is missing rather than guessing."
-    )
-    raw, tokens = complete(prompt, settings["ai"]["tokens_synthesis"], settings, "Archive answer")
-    body = _clean_answer(raw)
-    return (_drop_cut_off_sentence(body) if body else None), tokens
+        f"[{i + 1}] {s['ticker']} · {s['category']} · page {s['page']}:\n{' '.join(s['text'][:450].split())}"
+        for i, s in enumerate(snippets[:6]))
+    system = ('Reply with one JSON object and nothing else: {"answer": "..."}. '
+              'The answer is three to five sentences, using ONLY the passages given, quoting their '
+              'figures and citing each claim as [1], [2]. Where companies differ, say how. '
+              'If the passages do not answer the question, say exactly what is missing.')
+    raw, tokens = complete(f"Passages from company filings:\n{body}\n\nQuestion: {question}",
+                           settings["ai"]["tokens_synthesis"], settings, "Archive answer",
+                           system=system, schema=_schema("answer"))
+    reply = _json_reply(raw)
+    answer = _clean_answer(str(reply.get("answer") or "")) if reply else None
+    if not answer:
+        answer = _clean_answer(_marked(raw) or raw)
+    return (_drop_cut_off_sentence(answer) if answer else None), tokens
 
 
 def token_note(tokens: int, generated_at: float, run_started: float) -> str:

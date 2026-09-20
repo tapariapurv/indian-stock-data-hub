@@ -263,6 +263,20 @@ assert llm.complete("hello", 50, bad, "test") == (None, 0) and llm.LAST_ERROR, \
     "a failure must leave a reason behind"
 print("  ok a failure records why")
 
+# --- nothing calls a function that isn't there -------------------------------
+# A careless edit once deleted expand_query and rerank_passages; the app only
+# failed when someone opened the Archive page.
+import ast  # noqa: E402
+for module in ("core", "ui", "app_pages/research.py", "app_pages/archive_search.py",
+               "app_pages/history.py", "app_pages/settings_page.py"):
+    path = ROOT / (module if module.endswith(".py") else f"{module}.py")
+    tree = ast.parse(path.read_text())
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and node.value.id == "llm"):
+            assert hasattr(llm, node.attr), f"{module} calls llm.{node.attr}, which does not exist"
+print("  ok every llm.* the app calls actually exists")
+
 print("ok: six providers answer correctly, spend is booked, and the caps stop paid calls")
 server.shutdown()
 tmp.cleanup()

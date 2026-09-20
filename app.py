@@ -35,6 +35,11 @@ if "settings" not in st.session_state:
         except Exception:
             pass  # housekeeping must never stop the app from starting
 
+    try:
+        archive.drop_unusable(llm.is_usable)
+    except Exception:
+        pass  # cleaning old answers must never stop the app from starting
+
     # Pick a model if none is saved, so every page -- not just Research --
     # knows one is available.
     if llm.ensure_model(st.session_state.settings):

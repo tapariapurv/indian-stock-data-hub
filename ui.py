@@ -70,7 +70,7 @@ def news_block(r: dict, run_started: float = 0.0):
                 if news.get("sentiment"):
                     color, icon = SENTIMENT_BADGE.get(news["sentiment"], ("gray", None))
                     st.badge(f"News sentiment · {news['sentiment']}", icon=icon, color=color)
-            if news.get("summary"):
+            if llm.is_usable(news.get("summary")):
                 st.markdown(news["summary"])
                 st.caption(f":material/memory: Summarised by `{news.get('model')}` from the "
                            f"{len(news['headlines'])} headlines below · "
@@ -96,7 +96,7 @@ def company_card(r: dict, run_started: float = 0.0, show_news: bool = True):
                 st.badge("Saved analysis", icon=":material/history:", color="gray")
         st.caption(r.get("company_name") or "")
 
-        if r.get("ai_summary"):
+        if llm.is_usable(r.get("ai_summary")):
             st.markdown(f"> {r['ai_summary']}")
             st.caption(f":material/memory: Written by `{r.get('ai_model')}` from the scraped data below · "
                        f"{llm.token_note(r.get('ai_tokens', 0), r.get('ai_at', 0), run_started)}")

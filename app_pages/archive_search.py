@@ -38,8 +38,17 @@ with st.form("archive_search"):
     f1, f2, f3 = st.columns([2, 2, 1])
     tickers = f1.multiselect("Companies", archive.indexed_tickers(), placeholder="All companies")
     categories = f2.multiselect("Filing type", core.WANTED_CATEGORIES, placeholder="All types")
-    keep = f3.number_input("Passages to read", min_value=3, max_value=20, value=8,
-                           help="How many of the best passages the model reads before answering.")
+    keep = f3.number_input("Passages to read", min_value=3, max_value=20, value=6,
+                           help="How many of the best passages the model reads before answering. "
+                                "Fewer is faster and cheaper.")
+    thorough = st.toggle(
+        "Thorough search", value=False,
+        help="Adds two more model calls: one to work out the vocabulary a filing would use, one "
+             "to rank what it finds. Better on an obscure question, but three times slower and "
+             "three times the tokens. A fast local model barely notices; a slow hosted one does.")
+    patience = st.slider("Give up after (seconds)", 15, 180, 60, 15,
+                         help="A busy provider can take minutes. When this runs out you get the "
+                              "passages found so far instead of a spinning page.")
     use_model = st.toggle(
         "Let the model do the searching and answer", value=ai_ready and ai_wanted,
         disabled=not ai_ready,
@@ -64,9 +73,16 @@ if not searched or not question.strip():
     st.stop()
 
 search_settings = settings if use_model else {**settings, "ai": {**settings["ai"], "enabled": False}}
-with st.spinner("Searching your filings…"):
+with st.status("Searching your filings…", expanded=True) as status:
     found = core.smart_search(question, search_settings, tickers or None, categories or None,
-                              candidates=30, keep=int(keep))
+                              candidates=24, keep=int(keep), deadline=float(patience),
+                              progress=lambda line: status.write(line), thorough=thorough)
+    status.update(label=f"Read {found['considered']} passages · {found['tokens']:,} tokens",
+                  state="complete", expanded=False)
+
+for note in found.get("notes", []):
+    st.caption(f":material/info: {note.capitalize()} — the passages below are still ranked by "
+               "relevance, and a shorter question or a faster model usually fixes it.")
 
 if not found["hits"]:
     st.warning("Nothing in the archive matches that. Try different words, or widen the filters.",
