@@ -21,6 +21,7 @@ import streamlit as st
 
 import archive
 import llm
+import portfolio
 import settings as cfg
 
 st.set_page_config(page_title="Indian Stock Data Hub", page_icon=":material/monitoring:",
@@ -45,10 +46,17 @@ if "settings" not in st.session_state:
     if llm.ensure_model(st.session_state.settings):
         cfg.save(st.session_state.settings)
 
+# A session that outlives a code update still holds the old settings; fill in
+# any default added since, so new pages never hit a missing key.
+st.session_state.settings = cfg._merge(cfg.DEFAULTS, st.session_state.settings)
+portfolio.start_refresher()
+
 st.html(cfg.style_css(st.session_state.settings["ui"]))
 
 pages = [
     st.Page("app_pages/research.py", title="Research", icon=":material/query_stats:", default=True),
+    st.Page("app_pages/portfolio_page.py", title="Portfolio", icon=":material/account_balance_wallet:"),
+    st.Page("app_pages/stock.py", title="Stock", icon=":material/candlestick_chart:"),
     st.Page("app_pages/archive_search.py", title="Archive", icon=":material/search:"),
     st.Page("app_pages/history.py", title="History", icon=":material/history:"),
     st.Page("app_pages/settings_page.py", title="Settings", icon=":material/settings:"),

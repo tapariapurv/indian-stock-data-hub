@@ -18,11 +18,40 @@ import hashlib
 import json
 import re
 import sqlite3
+import io
+import os
+import shutil
 import time
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "downloads" / "archive.db"
+import settings as cfg
+
+DATA_ROOT = cfg.DATA_DIR / "downloads"
+DB_PATH = DATA_ROOT / "archive.db"
+
+
+def _rebase(db: Path, old: str, new: str) -> None:
+    """Point stored file paths at a new data folder after a move or restore."""
+    if old == new or not db.exists():
+        return
+    with sqlite3.connect(db) as conn:
+        for table, col in (("documents", "path"), ("runs", "snapshot")):
+            try:
+                conn.execute(f"UPDATE {table} SET {col}=replace({col}, ?, ?)", (old, new))
+            except sqlite3.OperationalError:
+                pass  # table not created yet
+
+
+# One-time move from the old in-app folder, which an update could overwrite.
+_OLD_ROOT = Path(__file__).parent / "downloads"
+if _OLD_ROOT.is_dir() and not DB_PATH.exists() and not os.environ.get("STOCK_HUB_DATA"):
+    DATA_ROOT.parent.mkdir(parents=True, exist_ok=True)
+    if DATA_ROOT.exists():
+        DATA_ROOT.rmdir()  # empty; only created by a mkdir
+    shutil.move(str(_OLD_ROOT), str(DATA_ROOT))
+    _rebase(DB_PATH, str(_OLD_ROOT), str(DATA_ROOT))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -582,6 +611,71 @@ def drop_unusable(is_usable) -> int:
                              (json.dumps(snap, default=str), row["id"]))
                 fixed += 1
     return fixed
+
+
+# --------------------------------------------------------------------------
+# Backup: everything in one zip, restorable on this or another computer
+# --------------------------------------------------------------------------
+
+def export_bundle(include_keys: bool = False, include_pdfs: bool = False) -> bytes:
+    """A zip of settings, portfolios, saved analyses, the search index and
+    (optionally) the filing PDFs. API keys are left out unless asked for."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("manifest.json", json.dumps({"app": "stock-data-hub", "version": 1,
+                                                "data_root": str(DATA_ROOT), "created": time.time()}))
+        s = cfg.load()
+        if not include_keys:
+            for p in s.get("providers", {}).values():
+                p["api_key"] = ""
+        z.writestr("settings.json", json.dumps(s, indent=2))
+        if DB_PATH.exists():
+            snap = DATA_ROOT / "export.tmp.db"
+            with sqlite3.connect(DB_PATH) as src, sqlite3.connect(snap) as dst:
+                src.backup(dst)  # consistent copy even while the app is writing
+            z.write(snap, "archive.db")
+            snap.unlink()
+        if include_pdfs:
+            for pdf in DATA_ROOT.rglob("*.pdf"):
+                z.write(pdf, f"files/{pdf.relative_to(DATA_ROOT).as_posix()}")
+    return buf.getvalue()
+
+
+def import_bundle(uploaded) -> str:
+    """Restore a zip from export_bundle(), replacing the current data.
+    Returns a message; raises ValueError for a file that is not a backup."""
+    try:
+        z = zipfile.ZipFile(uploaded)
+        manifest = json.loads(z.read("manifest.json"))
+    except (zipfile.BadZipFile, KeyError, ValueError):
+        raise ValueError("That is not a backup made by this app.")
+    if manifest.get("app") != "stock-data-hub":
+        raise ValueError("That is not a backup made by this app.")
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    pdfs = 0
+    for name in z.namelist():
+        if name.startswith("files/") and name.endswith(".pdf"):
+            dest = (DATA_ROOT / name[len("files/"):]).resolve()
+            if DATA_ROOT.resolve() not in dest.parents:
+                continue  # never write outside the data folder
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(z.read(name))
+            pdfs += 1
+    if "archive.db" in z.namelist():
+        tmp = DATA_ROOT / "import.tmp.db"
+        tmp.write_bytes(z.read("archive.db"))
+        _rebase(tmp, manifest.get("data_root", ""), str(DATA_ROOT))
+        for suffix in ("-wal", "-shm"):
+            Path(f"{DB_PATH}{suffix}").unlink(missing_ok=True)
+        os.replace(tmp, DB_PATH)
+    if "settings.json" in z.namelist():
+        restored = json.loads(z.read("settings.json"))
+        current = cfg.load()
+        for pid, p in restored.get("providers", {}).items():
+            if not p.get("api_key"):  # a backup without keys keeps the keys you have
+                p["api_key"] = current.get("providers", {}).get(pid, {}).get("api_key", "")
+        cfg.save(cfg._merge(cfg.DEFAULTS, restored))
+    return f"Restored settings, portfolios and saved analyses" + (f", plus {pdfs} filing(s)." if pdfs else ".")
 
 
 def clear_all() -> None:

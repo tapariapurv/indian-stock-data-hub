@@ -64,7 +64,7 @@ with st.sidebar:
     st.download_button("Watchlist template (CSV)", core.watchlist_template(),
                        file_name="watchlist_template.csv", mime="text/csv",
                        icon=":material/download:", type="tertiary", width="stretch")
-    st.caption(f"PDFs capped at {core.MAX_FILE_MB} MB and cached under `downloads/`. "
+    st.caption(f"PDFs capped at {core.MAX_FILE_MB} MB and cached in `~/.stock-data-hub`. "
                f"Results cached for {core.CACHE_TTL_SECONDS // 60} min.")
     for missing, lib, feature in [(not core.PDFPLUMBER_AVAILABLE, "pdfplumber", "PDF extraction"),
                                   (not core.DOCX_AVAILABLE, "python-docx", "Word export"),

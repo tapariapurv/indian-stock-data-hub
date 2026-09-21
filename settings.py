@@ -14,7 +14,15 @@ import json
 import os
 from pathlib import Path
 
-SETTINGS_PATH = Path(__file__).parent / "settings.json"
+# Everything you create -- settings, portfolios, saved analyses, filings --
+# lives outside the app folder, so updating or replacing the app never
+# touches it. STOCK_HUB_DATA moves it elsewhere.
+DATA_DIR = Path(os.environ.get("STOCK_HUB_DATA") or Path.home() / ".stock-data-hub")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+SETTINGS_PATH = DATA_DIR / "settings.json"
+_OLD_SETTINGS = Path(__file__).parent / "settings.json"  # where it lived before
+if _OLD_SETTINGS.exists() and not SETTINGS_PATH.exists() and not os.environ.get("STOCK_HUB_DATA"):
+    _OLD_SETTINGS.replace(SETTINGS_PATH)
 
 WANTED_CATEGORIES = ["Concall Transcript", "Investor Presentation", "Annual Report", "Quarterly Results"]
 
@@ -86,6 +94,9 @@ DEFAULTS = {
         "history": True,
         "guidance": True,
     },
+    # Every held stock is re-analysed this often in the background; 0 = only
+    # once, when it is added.
+    "portfolio": {"refresh_hours": 24, "track_positions": True},
     # How long saved work is kept. 0 = keep forever; a purge runs at startup.
     "storage": {
         "keep_runs_days": 180,       # saved analyses you can reopen from History

@@ -9,10 +9,12 @@ that has been parsed once is never parsed again, however many times it is
 re-analysed.
 """
 
+import hashlib
 import io
 import os
 import random
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -24,6 +26,7 @@ import pandas as pd
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
 import archive
 import llm
@@ -60,7 +63,7 @@ SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=8, pool
 # --------------------------------------------------------------------------
 
 BASE_URL = "https://www.screener.in/company/{ticker}/"
-DOWNLOAD_DIR = Path(__file__).parent / "downloads"
+DOWNLOAD_DIR = archive.DATA_ROOT
 
 # Defaults come from the user's settings at import. The cache TTLs below are
 # baked into decorators, so changing those two takes a restart (the settings
@@ -268,19 +271,19 @@ def smart_download(url: str, dest_path: Path) -> tuple[bool, str | None]:
     if dest_path.exists() and dest_path.stat().st_size > 0:
         return True, None
     try:
-        head = SESSION.head(url, headers=_headers(), timeout=REQUEST_TIMEOUT, allow_redirects=True)
-        content_type = head.headers.get("Content-Type", "").lower()
-        content_length = int(head.headers.get("Content-Length", 0) or 0)
-        if content_length and content_length > MAX_FILE_MB * 1024 * 1024:
-            return False, f"Skipped (file is {content_length / 1e6:.1f} MB, over the {MAX_FILE_MB} MB limit)."
-        if content_type and "pdf" not in content_type and not url.lower().endswith(".pdf"):
-            return False, f"Skipped (not a PDF: content-type '{content_type}')."
-
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         downloaded = 0
+        # One streamed GET: its headers answer the size/type checks before
+        # any of the body is read, so no separate HEAD round trip is needed.
         with SESSION.get(url, headers=_headers(), timeout=DOWNLOAD_TIMEOUT, stream=True) as resp:
             if resp.status_code != 200:
                 return False, f"HTTP {resp.status_code}"
+            content_type = resp.headers.get("Content-Type", "").lower()
+            content_length = int(resp.headers.get("Content-Length", 0) or 0)
+            if content_length and content_length > MAX_FILE_MB * 1024 * 1024:
+                return False, f"Skipped (file is {content_length / 1e6:.1f} MB, over the {MAX_FILE_MB} MB limit)."
+            if content_type and "pdf" not in content_type and not url.lower().endswith(".pdf"):
+                return False, f"Skipped (not a PDF: content-type '{content_type}')."
             with open(dest_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=65536):
                     if not chunk:
@@ -654,7 +657,7 @@ def _fail(result: dict, message: str, settings: dict) -> dict:
 
 
 def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, ...],
-                  max_per_category: int | None) -> dict:
+                  max_per_category: int | None, on_name=None) -> dict:
     ticker = (ticker or "").strip().upper()
     result = _blank_result(ticker)
     if not ticker:
@@ -671,6 +674,8 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
 
     title_tag = soup.select_one("h1")
     result["company_name"] = sanitize_text(title_tag.get_text(strip=True)) if title_tag else ticker
+    if on_name:
+        on_name(result["company_name"])  # lets news start while filings download
 
     try:
         for li in soup.select("#top-ratios li"):
@@ -728,19 +733,27 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
         result["downloaded"][category] = []
         for i, doc in enumerate(docs):
             suffix = "" if i == 0 else f"_{i + 1}"
-            jobs.append((category, doc, DOWNLOAD_DIR / ticker / f"{safe_cat}{suffix}.pdf"))
+            # Named by URL, so a newly published filing is downloaded while one
+            # already on disk is never fetched (or parsed) twice.
+            tag = hashlib.sha1(doc["url"].encode()).hexdigest()[:10]
+            jobs.append((category, doc, DOWNLOAD_DIR / ticker / f"{safe_cat}{suffix}_{tag}.pdf"))
     if jobs:
         workers = max(1, min(int(settings["data"]["doc_workers"]), len(jobs)))
+
+        def fetch_and_parse(job):
+            category, doc, dest = job
+            ok, err = smart_download(doc["url"], dest)
+            # Parsed the moment it lands, while the other files are still
+            # downloading. Deterministic, code-only: nothing depends on a model.
+            return ok, err, extract_and_index(dest, ticker, category) if ok else []
+
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            outcomes = list(pool.map(lambda j: smart_download(j[1]["url"], j[2]), jobs))
+            outcomes = list(pool.map(fetch_and_parse, jobs))
         figures = []
-        for (category, doc, dest), (ok, err) in zip(jobs, outcomes):
+        for (category, doc, dest), (ok, err, found) in zip(jobs, outcomes):
             result["downloaded"][category].append(
                 {"path": str(dest) if ok else None, "error": err, "url": doc["url"]})
-            if ok:
-                # Deterministic, code-only pass: every number in the PDF is
-                # captured, and nothing here depends on a model.
-                figures.extend(extract_and_index(dest, ticker, category))
+            figures.extend(found)
         result["figures"] = figures
 
     if ai_signature(settings)[0]:
@@ -763,26 +776,44 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
     return result
 
 
+# One analysis at a time across the whole app (Research page and the portfolio
+# refresher), so a background refresh never doubles the load on the machine.
+# ponytail: global lock; a second user waits for the first run to finish.
+RUN_LOCK = threading.Lock()
+
+
 def scrape_all(tickers: list[str], settings: dict, selected_categories: tuple[str, ...],
                max_per_category: int | None, progress=None) -> list[dict]:
+    with RUN_LOCK:
+        return _scrape_all(tickers, settings, selected_categories, max_per_category, progress)
+
+
+def _scrape_all(tickers, settings, selected_categories, max_per_category, progress) -> list[dict]:
     apply_settings(settings)
     llm.start_run()
     delay = (settings["data"]["delay_min"], settings["data"]["delay_max"])
     want_news = settings["features"]["news"]
     results, total = [], len(tickers)
-    for i, ticker in enumerate(tickers):
-        if progress:
-            progress.progress(i / max(total, 1), text=f"Processing {ticker}…")
-        started = time.time()
-        data = scrape_ticker(ticker, settings, selected_categories, max_per_category)
-        if data["ok"] and want_news:
+    # News is fetched (and summarised) on one side thread while the same
+    # company's filings download and parse, instead of after them.
+    ctx, news = get_script_run_ctx(), {}
+    with ThreadPoolExecutor(max_workers=1,
+                            initializer=lambda: add_script_run_ctx(threading.current_thread(), ctx)) as side:
+        for i, ticker in enumerate(tickers):
             if progress:
-                progress.progress((i + 0.8) / max(total, 1), text=f"Gathering news for {ticker}…")
-            data["news"] = get_news(ticker, data["company_name"] or ticker, ai_signature(settings), settings)
-        results.append(data)
-        # Only pause when we actually hit the network; a cached ticker is free.
-        if time.time() - started > 0.05 and i < total - 1:
-            time.sleep(random.uniform(*delay))
+                progress.progress(i / max(total, 1), text=f"Processing {ticker}…")
+            started = time.time()
+            start_news = (lambda name, t=ticker.strip().upper(): news.__setitem__(
+                t, side.submit(get_news, t, name or t, ai_signature(settings), settings))) if want_news else None
+            results.append(scrape_ticker(ticker, settings, selected_categories, max_per_category, start_news))
+            # Only pause when we actually hit the network; a cached ticker is free.
+            if time.time() - started > 0.05 and i < total - 1:
+                time.sleep(random.uniform(*delay))
+        if progress and news:
+            progress.progress(0.95, text="Finishing news…")
+        for data in results:
+            if data["ok"] and data["ticker"] in news:
+                data["news"] = news[data["ticker"]].result()
     if progress:
         progress.progress(1.0, text="Done.")
     return results

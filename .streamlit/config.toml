@@ -44,3 +44,9 @@ borderColor = "#E3E0D8"
 [server]
 # Serves ./static at app/static/... (the Ollama setup guide PDF lives there).
 enableStaticServing = true
+# Auto-update: when a source file changes (an edit or a git pull), the open
+# app reruns on the new code by itself. Only code is watched -- your data lives
+# in ~/.stock-data-hub, and the old in-app data folder is excluded too.
+runOnSave = true
+fileWatcherType = "auto"
+folderWatchBlacklist = ["downloads", "tests", "docs", "static", ".git", ".claude"]

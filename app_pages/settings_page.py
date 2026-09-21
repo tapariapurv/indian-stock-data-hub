@@ -10,6 +10,7 @@ import streamlit as st
 import archive
 import core
 import llm
+import portfolio
 import settings as cfg
 
 s = st.session_state.settings
@@ -384,6 +385,34 @@ with tab_store:
         st.cache_data.clear()
         st.toast("Caches cleared.", icon=":material/check_circle:")
 
+    st.markdown("**Back up or move your data**")
+    st.caption(f"Everything lives in `{cfg.DATA_DIR}` — outside the app folder, so updating the app never "
+               "touches it. A backup is one zip with your settings, portfolios, saved analyses and search "
+               "index; import it here, on this or another computer, to get everything back.")
+    b1, b2 = st.columns(2)
+    with b1.container(border=True):
+        keys = st.checkbox("Include API keys", help="Off by default: a backup file is easy to share by accident.")
+        pdfs = st.checkbox("Include filing PDFs", help="Much bigger. Without them, filings are re-downloaded "
+                                                       "when needed; the extracted numbers and text are kept either way.")
+        if st.button("Prepare backup", icon=":material/archive:", width="stretch"):
+            st.session_state.backup_zip = archive.export_bundle(keys, pdfs)
+        if st.session_state.get("backup_zip"):
+            st.download_button("Download backup", st.session_state.backup_zip, type="primary", width="stretch",
+                               file_name=f"stock_data_hub_{datetime.now():%Y%m%d_%H%M}.zip", mime="application/zip",
+                               icon=":material/download:", on_click=lambda: st.session_state.pop("backup_zip"))
+    with b2.container(border=True):
+        backup = st.file_uploader("Restore from a backup", type=["zip"])
+        sure = st.checkbox("Replace my current data with this backup")
+        if st.button("Restore", icon=":material/settings_backup_restore:", width="stretch",
+                     disabled=not (backup and sure)):
+            try:
+                msg = archive.import_bundle(backup)
+                st.session_state.settings = cfg.load()
+                st.cache_data.clear()
+                st.toast(msg, icon=":material/check_circle:")
+            except ValueError as exc:
+                st.error(str(exc), icon=":material/error:")
+
     with st.expander("Delete everything", icon=":material/warning:"):
         st.markdown("This removes every saved analysis, every indexed page and every commitment on "
                     "file. The downloaded PDFs stay on disk; retention handles those. "
@@ -402,3 +431,21 @@ with tab_store:
             cfg.reset()
             st.session_state.settings = cfg.load()
             st.rerun()
+
+
+with tab_data:
+    st.markdown("**Portfolio auto-refresh**")
+    st.caption("Every stock held in any portfolio is re-analysed in the background this often — "
+               "one stock at a time, never alongside another run. A newly added stock is analysed "
+               "straight away. Set 0 to analyse each stock only once.")
+    p = portfolio.prefs(s)
+    hours = st.number_input("Re-analyse every (hours)", 0, 720, int(p["refresh_hours"]))
+    track = st.toggle("Track quantities and buy prices", value=p["track_positions"],
+                      help="Optional either way. Off hides value and P&L and just follows the stocks. "
+                           "These numbers are stored only on this computer and are never sent anywhere — "
+                           "not to price sources, and not to any AI model.")
+    if st.button("Save portfolio settings", type="primary", icon=":material/save:"):
+        s["portfolio"] = {**p, "refresh_hours": int(hours), "track_positions": track}
+        cfg.save(s)
+        portfolio.wake()
+        st.toast("Refresh schedule saved.", icon=":material/check_circle:")

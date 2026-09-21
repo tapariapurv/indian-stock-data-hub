@@ -7,3 +7,6 @@ lxml>=5.0                # HTML tables + RSS/XML parsing
 pdfplumber>=0.11         # reads numbers out of filing PDFs
 openpyxl>=3.1            # Excel export
 python-docx>=1.1         # Word export
+yfinance>=0.2.50         # Portfolio prices (free, no key)
+plotly>=5.20             # Portfolio allocation chart
+watchdog>=4.0          # reliable auto-reload when the code changes
