@@ -259,8 +259,17 @@ assert not BUSY, "the 503 should have been consumed by a retry"
 print("  ok a busy provider is retried instead of reported as an empty answer")
 
 bad = configure("openai", "mock-model", base="http://127.0.0.1:9")   # nothing listening
+real_candidates = llm.candidates
+llm.candidates = lambda settings: [settings]                          # no fallback models: everything fails
 assert llm.complete("hello", 50, bad, "test") == (None, 0) and llm.LAST_ERROR, \
     "a failure must leave a reason behind"
+llm.candidates = lambda settings: [settings, configure("openai", "mock-model")]
+llm._benched.clear()
+text, _ = llm.complete("hello", 50, bad, "test")
+assert text == "openai answer" and llm.LAST_MODEL == "mock-model", (text, llm.LAST_ERROR)
+llm.candidates = real_candidates
+llm._benched.clear()
+print("  ok a dead provider falls back to the next model, and a total failure still explains itself")
 print("  ok a failure records why")
 
 # --- nothing calls a function that isn't there -------------------------------

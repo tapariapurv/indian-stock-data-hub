@@ -6,6 +6,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+import alerts
 import archive
 import core
 import exports
@@ -30,7 +31,7 @@ if not held:
 tickers = sorted(held)
 default = st.session_state.get("stock")
 ticker = st.selectbox("Stock", tickers, index=tickers.index(default) if default in tickers else 0,
-                      format_func=lambda t: f"{t} · {held[t]['name']}", label_visibility="collapsed")
+                      format_func=lambda t: f"{t} · {held[t]['name']}", label_visibility="collapsed", key="stock_pick")
 st.session_state.stock = ticker
 sid = held[ticker]["screener_id"]
 
@@ -66,6 +67,33 @@ with h3.container(horizontal=True, horizontal_alignment="right"):
                                    icon=icon)
             except Exception as exc:
                 st.caption(f"{label} export failed: {exc}")
+
+# --- Upcoming events and price alerts ---------------------------------------------
+events = pf.calendar(ticker, held[ticker]["name"], pf.day_slot())
+with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+    st.markdown(":material/event: **Upcoming**", width="content")
+    if not events:
+        st.caption("No dated events announced yet.")
+    for e in events[:4]:
+        days = (e["date"] - datetime.now(pf.IST).date()).days
+        with st.container(border=True, width="content"):
+            st.markdown(f"**{e['date']:%d %b}** · {e['event']}  \n:gray[{'today' if days == 0 else f'in {days} d'}"
+                        + (f" · {e['detail']}" if e["detail"] else "") + "]")
+    st.space("stretch")
+    mine = alerts.rules(ticker)
+    with st.popover(f"Price alerts · {len(mine)}" if mine else "Price alert", icon=":material/add_alert:"):
+        for r in mine:
+            c1, c2 = st.columns([4, 1], vertical_alignment="center")
+            c1.markdown(f"{r['op'].title()} ₹{r['level']:,.2f}" + (" · :orange[triggered]" if r["fired"] else ""))
+            if c2.button("", icon=":material/delete:", key=f"del_rule_{r['id']}", type="tertiary"):
+                alerts.delete_rule(r["id"])
+                st.rerun()
+        op = st.segmented_control("Notify me when the price goes", ["above", "below"], default="above", required=True)
+        level = st.number_input("Level (₹)", min_value=0.0, value=float(quote["price"]) if quote else 0.0, step=1.0)
+        if st.button("Add alert", type="primary", width="stretch"):
+            alerts.add_rule(ticker, op, level)
+            st.toast(f"You'll be notified when {ticker} goes {op} ₹{level:,.2f}.", icon=":material/add_alert:")
+            st.rerun()
 
 if not latest:
     msg = (f"Analysing now in the background…" if pf.STATUS["running"] == ticker

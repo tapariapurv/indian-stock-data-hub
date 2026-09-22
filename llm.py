@@ -220,9 +220,90 @@ def _blocked_reason(settings: dict) -> str | None:
     return None
 
 
+# --- Fallbacks: when the chosen model is overloaded, another answers ---------------
+# Same key first, fastest first; then a local Ollama model. Shared by every AI
+# feature, so one provider outage never blanks the verdicts, news or chat.
+FALLBACKS = {"google": ["gemini-flash-lite-latest", "gemini-flash-latest", "gemma-4-26b-a4b-it"],
+             "openai": ["gpt-4o-mini"], "anthropic": ["claude-haiku-4-5-20251001"]}
+TRANSIENT_ERRORS = ("HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503", "HTTP 529", "Timeout", "ConnectionError",
+                    "timed out", "empty reply", "reply budget", "Read timed out")
+BENCH_SECONDS = 300
+_benched: dict[str, float] = {}  # model -> skipped until, after failing
+LAST_MODEL: str | None = None    # which model actually wrote the last answer
+
+
+def candidates(settings: dict) -> list[dict]:
+    """The chosen model, then working alternatives, each as full settings. A
+    model that just failed sits out five minutes so the next call skips it."""
+    ai = settings["ai"]
+    out = [settings]
+    try:
+        have = list_models(ai["provider"], cfg.base_url(settings, ai["provider"]), cfg.api_key(settings, ai["provider"]))
+        out += [{**settings, "ai": {**ai, "model": m}} for m in FALLBACKS.get(ai["provider"], [])
+                if m in have and m != ai["model"]]
+        if ai["provider"] != "ollama":
+            local = sorted(list_models("ollama", cfg.base_url(settings, "ollama"), ""),
+                           key=lambda m: ("0.5b" in m or "1b" in m, m))  # skip tiny models if there is a choice
+            if local:
+                out.append({**settings, "ai": {**ai, "provider": "ollama", "model": local[0]}})
+    except Exception:
+        pass  # listing models is a nicety; the chosen model still gets its turn
+    ready = [c for c in out if _benched.get(c["ai"]["model"], 0) < time.time()]
+    return ready or out
+
+
+def bench(model: str) -> None:
+    _benched[model] = time.time() + BENCH_SECONDS
+
+
+def is_transient(error: str | None) -> bool:
+    return error is None or any(t in error for t in TRANSIENT_ERRORS)
+
+
+def friendly(error: str | None) -> str:
+    e = error or "no reply"
+    if any(code in e for code in ("HTTP 503", "HTTP 529", "high demand", "overloaded")):
+        return "the provider is overloaded right now"
+    if "HTTP 429" in e:
+        return "the provider's rate limit was hit — wait a minute"
+    if "Timeout" in e or "timed out" in e:
+        return "it took too long to start answering"
+    if "HTTP 401" in e or "HTTP 403" in e:
+        return "the API key was refused — check Settings → Models & keys"
+    return e.split("{")[0].strip(" :") or e[:160]
+
+
 def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
              system: str | None = None, schema: dict | None = None) -> tuple[str | None, int]:
-    """(text, tokens used) from the configured provider. Never raises.
+    """(text, tokens) from the chosen model, or -- if it is busy, down or
+    returns nothing -- from the next working one. Never raises. LAST_MODEL
+    says which model answered; LAST_ERROR why nothing did."""
+    global LAST_MODEL, LAST_ERROR
+    LAST_MODEL, spent, tried = None, 0, []
+    if not settings["ai"].get("enabled") or not (settings["ai"].get("model") or "").strip():
+        return None, 0
+    chain = candidates(settings)
+    for attempt in chain:
+        if attempt is not chain[-1]:  # others are waiting in line: do not let one stall for minutes
+            attempt = {**attempt, "ai": {**attempt["ai"], "timeout": min(int(attempt["ai"].get("timeout", 60)), 45)}}
+        text, tokens = _complete_once(prompt, max_tokens, attempt, kind, system, schema)
+        spent += tokens
+        if text:
+            LAST_MODEL = attempt["ai"]["model"]
+            return text, spent
+        if LAST_BLOCK and _blocked_reason(settings):
+            return None, spent  # the budget said no: another model would spend the same money
+        tried.append(f"{attempt['ai']['model']}: {friendly(LAST_ERROR)}")
+        if not is_transient(LAST_ERROR):
+            break  # a bad key or request: another model will not fix it
+        bench(attempt["ai"]["model"])
+    LAST_ERROR = "; ".join(tried) or LAST_ERROR
+    return None, spent
+
+
+def _complete_once(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
+                   system: str | None = None, schema: dict | None = None) -> tuple[str | None, int]:
+    """(text, tokens used) from exactly the configured model. Never raises.
 
     Every call passes through the budget first and is written to the usage
     ledger afterwards, so the spend figures in Settings are what actually
@@ -291,7 +372,10 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
                                                    params={"key": key}, headers=_JSON, json=body,
                                                    timeout=timeout))
 
-            gen = {"maxOutputTokens": max_tokens, "temperature": temperature}
+            # Thinking models (Gemma 4, Gemini 2.5+) spend output tokens reasoning
+            # before they answer; a tight cap left them nothing to answer with.
+            room = max(max_tokens * 4, 2048)
+            gen = {"maxOutputTokens": room, "temperature": temperature}
             if schema:
                 # Forced structured output: the model cannot narrate its way
                 # out of a schema. Not every model on this API supports it,
@@ -303,7 +387,7 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
                 body["systemInstruction"] = {"parts": [{"text": system}]}
             resp = _gemini(body)
             if resp.status_code != 200 and schema:  # model without schema support
-                gen = {"maxOutputTokens": max_tokens, "temperature": temperature}
+                gen = {"maxOutputTokens": room, "temperature": temperature}
                 body["generationConfig"] = gen
                 resp = _gemini(body)
             if resp.status_code != 200 and system:
@@ -323,7 +407,9 @@ def complete(prompt: str, max_tokens: int, settings: dict, kind: str = "other",
             total = usage.get("totalTokenCount", 0)
             if total > prompt_tok + out_tok:  # Gemma reports only the total
                 out_tok = total - prompt_tok
-            return book("".join(p.get("text", "") for p in parts).strip() or None,
+            # Thinking models (Gemma 4, Gemini 2.5) return their reasoning as parts
+            # flagged "thought"; only the rest is the answer.
+            return book("".join(p.get("text", "") for p in parts if not p.get("thought")).strip() or None,
                         prompt_tok, out_tok)
 
         # OpenAI, OpenRouter and anything else speaking the OpenAI chat API.
@@ -783,3 +869,151 @@ def token_note(tokens: int, generated_at: float, run_started: float) -> str:
 
 def now() -> float:
     return time.time()
+
+
+def stream(messages: list[dict], system: str, max_tokens: int, settings: dict, kind: str = "Chat",
+           patient: bool = True, first_by: float | None = None):
+    """Yield the reply as it is written (see _stream); if nothing at all comes
+    back, LAST_ERROR says why instead of the chat going silently blank."""
+    global LAST_ERROR
+    wrote = False
+    for chunk in _stream(messages, system, max_tokens, settings, kind, patient, first_by):
+        if chunk:
+            wrote = True
+            yield chunk
+    if not wrote and not LAST_ERROR:
+        LAST_ERROR = ("the model used its whole reply budget thinking and wrote no answer — raise "
+                      "“Chat replies” in Settings → Generation limits" if _FINISH.get("reason") == "MAX_TOKENS"
+                      else f"the model returned an empty reply ({_FINISH.get('reason') or 'no reason given'})")
+
+
+_FINISH: dict = {}
+
+
+def _stream(messages: list[dict], system: str, max_tokens: int, settings: dict, kind: str, patient: bool = True,
+            first_by: float | None = None):
+    """Yield the reply as it is written, for a chat that feels alive. Same
+    budget check and usage ledger as complete(); never raises -- on failure it
+    stops and leaves the reason in LAST_ERROR."""
+    global LAST_BLOCK, LAST_ERROR
+    LAST_ERROR = None
+    ai = settings["ai"]
+    provider, model = ai["provider"], (ai.get("model") or "").strip()
+    if not ai.get("enabled") or not model:
+        LAST_ERROR = "no model is set up"
+        return
+    blocked = _blocked_reason(settings)
+    if blocked:
+        LAST_BLOCK = LAST_ERROR = blocked
+        return
+    base, key = cfg.base_url(settings, provider), cfg.api_key(settings, provider)
+    temperature, timeout = float(ai.get("temperature", 0.2)), max(int(ai.get("timeout", 60)), 90)
+    usage = {"in": 0, "out": 0}
+    _FINISH.clear()
+    t0, wrote = time.time(), [False]
+
+    def stalled() -> bool:
+        """True once a model has thought silently past `first_by` seconds -- the
+        caller would rather hand the question to the next model than keep waiting."""
+        global LAST_ERROR
+        if first_by and not wrote[0] and time.time() - t0 > first_by:
+            LAST_ERROR = f"Timeout: no answer after {first_by:.0f}s of thinking"
+            return True
+        return False
+
+    def post(*args, **kwargs):
+        """A streamed POST that waits out a busy provider (429/5xx) twice before giving up --
+        unless the caller has a fallback of its own and would rather move on at once."""
+        for wait in (2, 6, 0) if patient else (0,):
+            resp = requests.post(*args, stream=True, timeout=timeout, **kwargs)
+            resp.encoding = "utf-8"  # SSE replies often omit a charset; the default mangles ₹
+            if resp.status_code not in (429, 500, 502, 503, 529) or not wait:
+                return resp
+            resp.close()
+            time.sleep(wait)
+
+    def sse(resp):
+        for line in resp.iter_lines(decode_unicode=True):
+            if line and line.startswith("data:") and line[5:].strip() not in ("", "[DONE]"):
+                yield json.loads(line[5:])
+
+    try:
+        if provider == "ollama":
+            body = {"model": model, "stream": True, "think": False,
+                    "messages": [{"role": "system", "content": system}, *messages],
+                    "options": {"temperature": temperature, "num_predict": max_tokens,
+                                "num_ctx": max(8192, int(ai.get("num_ctx", 2048)))}}
+            with post(f"{base}/api/chat", json=body) as resp:
+                if resp.status_code != 200:
+                    LAST_ERROR = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                    return
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    if data.get("message", {}).get("content"):
+                        wrote[0] = True
+                        yield data["message"]["content"]
+                    elif stalled():
+                        return
+                    if data.get("done"):
+                        usage.update({"in": data.get("prompt_eval_count", 0), "out": data.get("eval_count", 0)})
+        elif provider == "anthropic":
+            body = {"model": model, "max_tokens": max_tokens, "temperature": temperature, "system": system,
+                    "messages": messages, "stream": True}
+            with post(f"{base}/v1/messages", headers=_auth_headers(provider, key), json=body) as resp:
+                if resp.status_code != 200:
+                    LAST_ERROR = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                    return
+                for data in sse(resp):
+                    if data.get("type") == "content_block_delta":
+                        yield data["delta"].get("text", "")
+                    elif data.get("type") == "message_start":
+                        usage["in"] = data["message"].get("usage", {}).get("input_tokens", 0)
+                    elif data.get("type") == "message_delta":
+                        usage["out"] = data.get("usage", {}).get("output_tokens", 0)
+        elif provider == "google":
+            # Folded into the first turn: Gemma on this API rejects a system instruction.
+            turns = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]}
+                     for m in messages]
+            turns[0]["parts"][0]["text"] = f"{system}\n\n{turns[0]['parts'][0]['text']}"
+            with post(f"{base}/models/{model}:streamGenerateContent", params={"key": key, "alt": "sse"},
+                      headers=_JSON,
+                               json={"contents": turns, "generationConfig": {"maxOutputTokens": max(max_tokens * 4, 4096),
+                                                                             "temperature": temperature}}) as resp:
+                if resp.status_code != 200:
+                    LAST_ERROR = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                    return
+                for data in sse(resp):
+                    _FINISH["reason"] = (data.get("candidates") or [{}])[0].get("finishReason") or _FINISH.get("reason")
+                    for part in (data.get("candidates") or [{}])[0].get("content", {}).get("parts", []):
+                        if not part.get("thought") and part.get("text"):  # skip the model's hidden reasoning
+                            wrote[0] = True
+                            yield part["text"]
+                    if stalled():
+                        return
+                    meta = data.get("usageMetadata") or {}
+                    usage.update({"in": meta.get("promptTokenCount", usage["in"]),
+                                  "out": meta.get("totalTokenCount", 0) - meta.get("promptTokenCount", 0)})
+        else:  # OpenAI and anything speaking its chat API
+            body = {"model": model, "temperature": temperature, "max_tokens": max_tokens, "stream": True,
+                    "stream_options": {"include_usage": True},
+                    "messages": [{"role": "system", "content": system}, *messages]}
+            with post(f"{base}/chat/completions", headers=_auth_headers(provider, key), json=body) as resp:
+                if resp.status_code != 200:
+                    LAST_ERROR = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                    return
+                for data in sse(resp):
+                    for choice in data.get("choices") or []:
+                        yield (choice.get("delta") or {}).get("content") or ""
+                    if data.get("usage"):
+                        usage.update({"in": data["usage"].get("prompt_tokens", 0),
+                                      "out": data["usage"].get("completion_tokens", 0)})
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+        LAST_ERROR = f"{type(exc).__name__}: {exc}"[:200]
+    finally:
+        if usage["in"] or usage["out"]:
+            price_in, price_out = cfg.prices(settings, provider)
+            _RUN["tokens"] += usage["in"] + usage["out"]
+            archive.record_usage(provider, model, kind, usage["in"], usage["out"],
+                                 (usage["in"] * price_in + usage["out"] * price_out) / 1_000_000)

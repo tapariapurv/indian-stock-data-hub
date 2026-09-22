@@ -51,21 +51,19 @@ print(f"ok: app renders the home screen and every result tab ({len(labels)} tabs
 # Every other page renders too, given the settings the entry point loads.
 import settings as cfg
 
-for page in ["archive_search.py", "history.py", "settings_page.py"]:
-    page_at = AppTest.from_file(str(ROOT / "app_pages" / page), default_timeout=60)
-    page_at.session_state["settings"] = cfg.load()
-    page_at.run()
+for page in ["archive_search.py", "history.py", "settings_page.py", "ask.py", "screener_page.py", "compare.py",
+             "portfolio_page.py", "stock.py"]:
+    page_at = AppTest.from_file(APP, default_timeout=120).run()   # through app.py: pages link to each other
+    page_at.switch_page(f"app_pages/{page}").run()
     assert not page_at.exception, (page, [e.value for e in page_at.exception])
 print("ok: archive, history and settings pages render")
 
 # The archive's keyword search must work with no model at all, and fast.
 import re  # noqa: E402
 
-arch = AppTest.from_file(str(ROOT / "app_pages" / "archive_search.py"), default_timeout=90)
-arch.session_state["settings"] = cfg.load()
-arch.run()
-assert [t.label for t in arch.tabs][:2] == [":material/search: Find", ":material/forum: Ask"]
-assert arch.chat_input, "the Ask tab needs a chat box"
+arch = AppTest.from_file(APP, default_timeout=90).run()
+arch.switch_page("app_pages/archive_search.py").run()
+assert not arch.exception, [e.value for e in arch.exception]  # asking now lives on its own Ask AI page
 if arch.text_input:                      # skipped when the archive is empty
     arch.text_input[0].set_value("capital")
     arch.button[0].click().run()

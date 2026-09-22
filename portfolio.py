@@ -14,6 +14,7 @@ import re
 import sys
 import threading
 import time
+from datetime import datetime, time as dtime, timedelta, timezone
 
 import pandas as pd
 import requests
@@ -29,12 +30,21 @@ CREATE TABLE IF NOT EXISTS holdings (
     account_id INTEGER, ticker TEXT, name TEXT, screener_id INTEGER,
     qty REAL, avg_price REAL, added REAL,
     PRIMARY KEY (account_id, ticker));
+CREATE TABLE IF NOT EXISTS alert_rules (id INTEGER PRIMARY KEY, ticker TEXT, op TEXT, level REAL,
+    created REAL, fired REAL);
+CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, ts REAL, ticker TEXT, kind TEXT, title TEXT,
+    body TEXT, read INTEGER DEFAULT 0, notified INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+CREATE TABLE IF NOT EXISTS digests (id INTEGER PRIMARY KEY, week TEXT UNIQUE, ts REAL, data TEXT);
+CREATE TABLE IF NOT EXISTS screens (name TEXT PRIMARY KEY, query TEXT);
+CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY, title TEXT, updated REAL, messages TEXT);
 """
 _ready = False
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # Also in settings.DEFAULTS; repeated here so a server started before this
 # feature existed (holding the old settings module) still works.
-DEFAULTS = {"refresh_hours": 24, "track_positions": True}
+DEFAULTS = {"refresh_hours": 24, "track_positions": True, "max_stock_pct": 20, "max_sector_pct": 35}
 
 
 def prefs(settings: dict) -> dict:
@@ -100,8 +110,9 @@ def latest_runs(tickers) -> dict[str, dict]:
     if not tickers:
         return {}
     marks = ",".join("?" * len(tickers))
-    rows = _q(f"SELECT ticker, MAX(ts) AS ts, json_extract(snapshot, '$.ai_verdict') AS verdict "
-              f"FROM runs WHERE ticker IN ({marks}) GROUP BY ticker", tickers)
+    rows = _q(f"SELECT r.ticker, r.ts, json_extract(r.snapshot, '$.ai_verdict') AS verdict FROM runs r "
+              f"JOIN (SELECT ticker, MAX(ts) AS ts FROM runs WHERE ticker IN ({marks}) GROUP BY ticker) m "
+              f"ON r.ticker = m.ticker AND r.ts = m.ts", tickers)
     return {r["ticker"]: r for r in rows}
 
 
@@ -216,6 +227,8 @@ def resolve(symbol: str) -> dict | None:
 
 
 def _yahoo(ticker: str) -> str:
+    if ticker.startswith("^"):
+        return ticker  # an index, e.g. ^NSEI (Nifty 50)
     return f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"  # screener uses BSE codes for BSE-only stocks
 
 
@@ -248,15 +261,29 @@ def _yf_frame(data: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
     return df if not df.empty else None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+def _price_slot() -> str:
+    """A cache key that changes every minute while NSE is open (09:15-15:30
+    IST, Mon-Fri) and only once per session outside it -- closed-market views
+    cost no requests and load instantly."""
+    now = datetime.now(IST)
+    open_ = now.weekday() < 5 and dtime(9, 15) <= now.time() <= dtime(15, 35)
+    return now.strftime("%Y-%m-%d %H:%M" if open_ else "%Y-%m-%d closed@") + ("" if open_ else (
+        "pre" if now.time() < dtime(9, 15) else "post"))
+
+
 def quotes(stocks: tuple[tuple[str, int | None], ...]) -> dict[str, dict]:
+    return _quotes(stocks, _price_slot())
+
+
+@st.cache_data(ttl=86400, max_entries=200, show_spinner=False)
+def _quotes(stocks: tuple[tuple[str, int | None], ...], _slot: str) -> dict[str, dict]:
     """ticker -> {price, change, change_pct, spark}; one Yahoo request for them all.
     spark is the last month of closes, for the card sparklines."""
     import yfinance as yf
     symbols = {t: _yahoo(t) for t, _ in stocks}
     try:
         data = yf.download(list(symbols.values()), period="1mo", interval="1d", group_by="ticker",
-                           progress=False, auto_adjust=False, threads=False)
+                           progress=False, auto_adjust=False, threads=4)  # 4 network waits in parallel: 4.2 s -> 1 s for 30
     except Exception:
         data = None
     out = {}
@@ -269,14 +296,14 @@ def quotes(stocks: tuple[tuple[str, int | None], ...]) -> dict[str, dict]:
         last = float(df["Close"].iloc[-1])
         prev = float(df["Close"].iloc[-2]) if len(df) > 1 else last
         out[ticker] = {"price": last, "change": last - prev, "change_pct": (last / prev - 1) * 100 if prev else 0.0,
-                       "spark": df["Close"].round(2).tolist()}
+                       "spark": df["Close"].round(2).tolist(), "asof": pd.Timestamp(df.index[-1]).strftime("%d %b %Y")}
     return out
 
 
 PERIOD_DAYS = {"1M": 31, "6M": 183, "1Y": 366, "5Y": 1830, "Max": 10000}
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=900, max_entries=20, show_spinner=False)  # years of daily bars each
 def history(ticker: str, screener_id, period: str) -> pd.DataFrame | None:
     """Daily OHLCV for the chart, with a year of warm-up so the 200-day line starts on screen."""
     import yfinance as yf
@@ -297,15 +324,119 @@ def history(ticker: str, screener_id, period: str) -> pd.DataFrame | None:
     return df[df.index >= df.index[-1] - pd.Timedelta(days=days)]
 
 
+def day_slot() -> str:
+    return datetime.now(IST).strftime("%Y-%m-%d")
+
+
+@st.cache_data(ttl=86400, max_entries=10, show_spinner=False)
+def performance(holdings: tuple[tuple[str, float], ...], _day: str) -> pd.DataFrame | None:
+    """A year of daily value for the current holdings next to the Nifty 50,
+    both rebased to 100. One batched request a day. Weighted by quantity when
+    known, equally otherwise."""
+    import yfinance as yf
+    symbols = {_yahoo(t): (t, q) for t, q in holdings}
+    try:
+        data = yf.download([*symbols, "^NSEI"], period="1y", interval="1d", group_by="ticker",
+                           progress=False, auto_adjust=True, threads=4)
+    except Exception:
+        return None
+    closes = pd.DataFrame({sym: data[sym]["Close"] for sym in [*symbols, "^NSEI"]
+                           if sym in data.columns.get_level_values(0)}).ffill().dropna(how="all")
+    held = [s for s in symbols if s in closes and closes[s].notna().any()]
+    if not held or "^NSEI" not in closes:
+        return None
+    closes = closes.dropna(subset=held + ["^NSEI"], how="any")
+    weights = {s: symbols[s][1] or 0 for s in held}
+    if sum(weights.values()) <= 0:  # no quantities: an equal-weight basket
+        weights = {s: 100 / float(closes[s].iloc[0]) for s in held}
+    value = sum(closes[s] * w for s, w in weights.items())
+    return pd.DataFrame({"Your holdings": value / value.iloc[0] * 100,
+                         "Nifty 50": closes["^NSEI"] / closes["^NSEI"].iloc[0] * 100})
+
+
+def cap_bucket(market_cap_cr) -> str:
+    """ponytail: fixed rupee cut-offs approximate SEBI's rank-based classes; adjust if they drift."""
+    if market_cap_cr is None:
+        return "Unknown"
+    return "Large cap" if market_cap_cr >= 100_000 else "Mid cap" if market_cap_cr >= 30_000 else "Small cap"
+
+
+def profiles(tickers) -> dict[str, dict]:
+    """ticker -> {sector, industry, market_cap} from each newest analysis."""
+    tickers = list(tickers)
+    if not tickers:
+        return {}
+    marks = ",".join("?" * len(tickers))
+    rows = _q(f"SELECT r.ticker, json_extract(r.snapshot, '$.sector') AS sector, "
+              f"json_extract(r.snapshot, '$.industry') AS industry, "
+              f"json_extract(r.snapshot, '$.metrics.\"Market Cap\"') AS mcap FROM runs r "
+              f"JOIN (SELECT ticker, MAX(ts) AS ts FROM runs WHERE ticker IN ({marks}) GROUP BY ticker) m "
+              f"ON r.ticker = m.ticker AND r.ts = m.ts", tickers)
+    return {r["ticker"]: {"sector": r["sector"] or "Unknown", "industry": r["industry"] or "",
+                          "market_cap": core._to_number(str(r["mcap"] or "").replace("₹", "").replace("Cr.", ""))}
+            for r in rows}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _bse_meetings(_day: str) -> list[dict]:
+    """Every upcoming results board meeting on BSE -- one request a day for all companies."""
+    try:
+        resp = core.SESSION.get("https://api.bseindia.com/BseIndiaAPI/api/Corpforthresults/w",
+                                headers={**core._headers(), "Referer": "https://www.bseindia.com/"},
+                                timeout=core.REQUEST_TIMEOUT)
+        return resp.json() if resp.ok else []
+    except (requests.RequestException, ValueError):
+        return []
+
+
+@st.cache_data(ttl=43200, max_entries=200, show_spinner=False)
+def calendar(ticker: str, name: str, _day: str) -> list[dict]:
+    """Upcoming dated events for one stock, soonest first: results (with the
+    analyst consensus when Yahoo has one), board meetings, dividends."""
+    import yfinance as yf
+    today = datetime.now(IST).date()
+    out = []
+    try:
+        cal = yf.Ticker(_yahoo(ticker)).calendar or {}
+    except Exception:
+        cal = {}
+    for day in cal.get("Earnings Date") or []:
+        eps, rev = cal.get("Earnings Average"), cal.get("Revenue Average")
+        note = " · ".join(x for x in (f"EPS est. ₹{eps:,.2f}" if eps else "",
+                                      f"revenue est. ₹{rev / 1e7:,.0f} Cr" if rev else "") if x)
+        out.append({"date": day, "event": "Quarterly results", "detail": note})
+    for key, label in (("Ex-Dividend Date", "Ex-dividend"), ("Dividend Date", "Dividend paid")):
+        if cal.get(key):
+            out.append({"date": cal[key], "event": label, "detail": ""})
+    first = name.split()[0].lower() if name else ""
+    for m in _bse_meetings(_day):
+        if m.get("short_name", "").upper() == ticker or (first and m.get("Long_Name", "").lower().startswith(first + " ")
+                                                         and len(first) > 3):
+            try:
+                out.append({"date": datetime.strptime(m["meeting_date"], "%d %b %Y").date(),
+                            "event": "Board meeting (results)", "detail": "Filed on BSE"})
+            except (KeyError, ValueError):
+                pass
+    seen, unique = set(), []
+    for e in sorted((e for e in out if e["date"] >= today), key=lambda e: e["date"]):
+        if (e["date"], e["event"].split()[0]) not in seen:
+            seen.add((e["date"], e["event"].split()[0]))
+            unique.append(e)
+    return unique
+
+
 # --- Analysis & the background refresher ------------------------------------
 
 def analyze(ticker: str, settings: dict, label: str = "Portfolio refresh") -> dict:
     """The Research page's full analysis for one stock, saved to its history."""
     categories = tuple(settings["data"]["categories"])
     per_cat = core.TIMEFRAME_OPTIONS.get(settings["data"]["timeframe"], 1)
+    previous = archive.previous_run(ticker.upper(), time.time())
     r = core.scrape_all([ticker], settings, categories, per_cat)[0]
     if r["ok"]:
         core.save_run(r, label=label)
+        import alerts  # late: alerts imports this module
+        alerts.after_analysis(previous["snapshot"] if previous else None, r, settings)
     return r
 
 
@@ -348,6 +479,9 @@ def _current() -> bool:
 
 
 def _loop() -> None:
+    # Heavy first imports (yfinance ~2 s, altair ~5 s for the first chart) are
+    # paid here in the background at server start, not by whoever opens a page.
+    import altair, yfinance  # noqa: F401, E401
     while _current():
         try:
             s = cfg.load()
@@ -366,6 +500,8 @@ def _loop() -> None:
                 if time.time() - started > 1 and i < len(queue) - 1:
                     time.sleep(random.uniform(s["data"]["delay_min"], s["data"]["delay_max"]))
             STATUS.update(queued=0, done=0, total=0, error=None)
+            import alerts
+            alerts.tick(s)  # price alerts, the weekly digest, and sending anything pending
         except Exception as exc:  # the refresher must outlive any one bad run
             STATUS.update(running=None, error=str(exc))
         _WAKE.wait(60)

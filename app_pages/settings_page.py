@@ -10,6 +10,7 @@ import streamlit as st
 import archive
 import core
 import llm
+import alerts
 import portfolio
 import settings as cfg
 
@@ -21,8 +22,8 @@ st.markdown(":gray[Everything here is stored in `settings.json` next to the app.
             "owner-only permissions, and an environment variable always wins over a saved key — so on a "
             "shared machine you need never write one down.]")
 
-tab_ai, tab_spend, tab_data, tab_look, tab_store = st.tabs(
-    [":material/memory: Models & keys", ":material/payments: Spending",
+tab_ai, tab_spend, tab_note, tab_data, tab_look, tab_store = st.tabs(
+    [":material/memory: Models & keys", ":material/payments: Spending", ":material/notifications: Notifications",
      ":material/travel_explore: Data & scraping", ":material/palette: Appearance",
      ":material/database: Storage & history"])
 
@@ -121,7 +122,9 @@ with tab_ai:
         tokens_synthesis = g5.number_input("Archive answers", 80, 1200, int(ai["tokens_synthesis"]), 20)
         temperature = g6.slider("Temperature", 0.0, 1.0, float(ai["temperature"]), 0.05,
                                 help="Low keeps answers close to the data. 0.2 is a good default.")
-        g7, g8 = st.columns(2)
+        g7, g8, g9 = st.columns(3)
+        tokens_chat = g9.number_input("Chat replies (Ask AI)", 200, 8000, int(ai.get("tokens_chat", 1200)), 100,
+                                      help="Ask AI streams its answer, so a longer limit costs nothing until used.")
         num_ctx = g7.number_input("Ollama context window", 512, 32768, int(ai["num_ctx"]), 512,
                                   help="Prompts here stay under ~700 tokens; a bigger window only "
                                        "costs RAM and load time.")
@@ -132,7 +135,7 @@ with tab_ai:
                        temperature=float(temperature), num_ctx=int(num_ctx), timeout=int(timeout),
                        tokens_analysis=int(tokens_analysis), tokens_news=int(tokens_news),
                        tokens_error=int(tokens_error), tokens_guidance=int(tokens_guidance),
-                       tokens_synthesis=int(tokens_synthesis))
+                       tokens_synthesis=int(tokens_synthesis), tokens_chat=int(tokens_chat))
         s["providers"][provider] = {"base_url": base.strip(),
                                     "api_key": "" if env_set else key_input.strip(),
                                     "price_in": float(price_in), "price_out": float(price_out)}
@@ -444,8 +447,60 @@ with tab_data:
                       help="Optional either way. Off hides value and P&L and just follows the stocks. "
                            "These numbers are stored only on this computer and are never sent anywhere — "
                            "not to price sources, and not to any AI model.")
+    l1, l2 = st.columns(2)
+    max_stock = l1.number_input("Warn when one stock is over (%)", 5, 100, int(p["max_stock_pct"]))
+    max_sector = l2.number_input("Warn when one sector is over (%)", 10, 100, int(p["max_sector_pct"]))
     if st.button("Save portfolio settings", type="primary", icon=":material/save:"):
-        s["portfolio"] = {**p, "refresh_hours": int(hours), "track_positions": track}
+        s["portfolio"] = {**p, "refresh_hours": int(hours), "track_positions": track,
+                          "max_stock_pct": int(max_stock), "max_sector_pct": int(max_sector)}
         cfg.save(s)
         portfolio.wake()
         st.toast("Refresh schedule saved.", icon=":material/check_circle:")
+
+
+with tab_note:
+    n = alerts.prefs(s)
+    st.markdown("**How to reach you**")
+    channels = st.pills("Channels", ["mac", "email"], selection_mode="multi", default=n["channels"],
+                        format_func={"mac": ":material/desktop_mac: macOS notification",
+                                     "email": ":material/mail: Email"}.get, label_visibility="collapsed")
+    st.caption("Alerts always land in **Portfolio → Alerts** too. Everything is batched: a re-analysis of many "
+               "stocks sends one message, not one per stock.")
+    if "email" in (channels or []):
+        with st.container(border=True):
+            st.markdown(":material/mail: **Email through your own Google Apps Script**")
+            st.caption("Mail is sent by a small script in your Google account, to your own address only — no "
+                       "third-party service, and the secret below stops anyone else from using it.")
+            url = st.text_input("Web app URL", value=n["email_url"], placeholder="https://script.google.com/macros/s/…/exec")
+            token = st.text_input("Secret", value=n["email_token"], type="password")
+    else:
+        url, token = n["email_url"], n["email_token"]
+    st.markdown("**What to alert on**")
+    k1, k2, k3, k4 = st.columns(4)
+    verdict = k1.toggle("Verdict changes", n["verdict"])
+    filing = k2.toggle("New filings", n["filing"])
+    guidance = k3.toggle("Missed guidance", n["guidance"], help="Uses the model to grade management's promises.")
+    price = k4.toggle("Price alerts", n["price"], help="Set levels on each stock's page.")
+    st.markdown("**Weekly digest**")
+    d1, d2 = st.columns(2)
+    digest = d1.toggle("Make a weekly digest", n["digest"])
+    day = d2.selectbox("On", range(7), index=int(n["digest_day"]), format_func=alerts.DAYS.__getitem__,
+                       disabled=not digest)
+    b1, b2 = st.columns(2)
+    if b1.button("Save notification settings", type="primary", icon=":material/save:", width="stretch"):
+        s["notify"] = {**n, "channels": channels or [], "email_url": url.strip(), "email_token": token.strip(),
+                       "verdict": verdict, "filing": filing, "guidance": guidance, "price": price,
+                       "digest": digest, "digest_day": int(day)}
+        cfg.save(s)
+        st.toast("Notification settings saved.", icon=":material/check_circle:")
+    if b2.button("Send a test", icon=":material/send:", width="stretch", disabled=not channels):
+        test = {**s, "notify": {**n, "channels": channels, "email_url": url.strip(), "email_token": token.strip()}}
+        problems = alerts.notify("Test from Stock Data Hub", "Notifications are working.", test,
+                                 alerts.email_page("Notifications are working",
+                                                   "This is a test from your Indian Stock Data Hub. Alerts and your "
+                                                   "weekly digest will arrive like this.", ""))
+        if problems:
+            st.error("  \n".join(problems), icon=":material/error:")
+        else:
+            st.success("Sent — check your notifications" + (" and inbox." if "email" in channels else "."),
+                       icon=":material/check_circle:")

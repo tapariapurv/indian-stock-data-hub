@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import alerts
 import portfolio as pf
 from ui import VERDICT_BADGE
 
@@ -200,6 +201,135 @@ with st.container(border=True):
             fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=190, showlegend=False)
             fig.update_traces(textinfo="label+percent", textposition="inside")
             st.plotly_chart(fig, config={"displayModeBar": False})
+
+# --- Sections: only the one on screen is built -------------------------------------
+n_unread = alerts.unread()
+SECTIONS = {"Holdings": ":material/view_module:", "Performance": ":material/show_chart:",
+            "Allocation": ":material/donut_large:", "Alerts": ":material/notifications:",
+            "Digest": ":material/newspaper:"}
+section = st.segmented_control(
+    "Section", list(SECTIONS), default="Holdings", required=True, key="pf_section",
+    label_visibility="collapsed",
+    format_func=lambda s: f"{SECTIONS[s]} {s}" + (f" · {n_unread}" if s == "Alerts" and n_unread else ""))
+
+if section == "Performance":
+    qty = df.groupby("ticker")["qty"].sum(min_count=1).fillna(0) if positions else pd.Series(0, index=uniq["ticker"])
+    perf = pf.performance(tuple(sorted((t, float(q)) for t, q in qty.items())), pf.day_slot())
+    if perf is None or perf.empty:
+        st.caption("Price history is unavailable right now — try again shortly.")
+        st.stop()
+    cols = st.columns(5)
+    for col, (label, days) in zip(cols, (("1 week", 5), ("1 month", 21), ("3 months", 63), ("6 months", 126),
+                                         ("1 year", len(perf) - 1))):
+        if len(perf) > days:
+            p = (perf["Your holdings"].iloc[-1] / perf["Your holdings"].iloc[-1 - days] - 1) * 100
+            n = (perf["Nifty 50"].iloc[-1] / perf["Nifty 50"].iloc[-1 - days] - 1) * 100
+            col.metric(label, f"{p:+.1f}%", f"{p - n:+.1f} pts vs Nifty", border=True)
+    st.line_chart(perf, color=["#1F4E79", "#C08A3E"], height=360, y_label="Rebased to 100")
+    st.caption("How the stocks you hold **today** have performed over the past year"
+               + (", weighted by your quantities" if positions and qty.sum() else ", equally weighted")
+               + ", against the Nifty 50. Buys and sells in between are not modelled.")
+    st.stop()
+
+if section == "Allocation":
+    prof = pf.profiles(uniq["ticker"])
+    alloc = uniq[["ticker", "name", "Day %"]].copy()
+    weights = df.groupby("ticker")["Value"].sum(min_count=1) if positions and value else None
+    alloc["Weight"] = alloc["ticker"].map(weights).fillna(0) if weights is not None else 1.0
+    alloc["Weight"] = alloc["Weight"] / alloc["Weight"].sum() * 100
+    alloc["Sector"] = alloc["ticker"].map(lambda t: (prof.get(t) or {}).get("sector", "Unknown"))
+    alloc["Size"] = alloc["ticker"].map(lambda t: pf.cap_bucket((prof.get(t) or {}).get("market_cap")))
+    limits = pf.prefs(settings)
+    heavy = alloc[alloc["Weight"] > limits["max_stock_pct"]]
+    sectors = alloc.groupby("Sector")["Weight"].sum().sort_values(ascending=False)
+    crowded = sectors[sectors > limits["max_sector_pct"]]
+    for _, r in heavy.iterrows():
+        st.warning(f"**{r['ticker']}** is {r['Weight']:.1f}% of the portfolio — above your "
+                   f"{limits['max_stock_pct']}% single-stock limit.", icon=":material/warning:")
+    for name, w in crowded.items():
+        st.warning(f"**{name}** is {w:.1f}% of the portfolio — above your {limits['max_sector_pct']}% sector limit.",
+                   icon=":material/warning:")
+    if heavy.empty and crowded.empty:
+        st.success(f"Nothing above your limits ({limits['max_stock_pct']}% per stock, "
+                   f"{limits['max_sector_pct']}% per sector — change them in Settings).", icon=":material/verified:")
+    left, right = st.columns([2, 1])
+    with left:
+        fig = px.treemap(alloc, path=["Sector", "ticker"], values="Weight", color="Day %",
+                         color_continuous_scale=["#C8453B", "#F1EFEA", "#1E8E5A"], color_continuous_midpoint=0)
+        fig.update_traces(texttemplate="%{label}<br>%{value:.1f}%", hovertemplate="%{label}: %{value:.1f}%")
+        fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=420, coloraxis_showscale=False)
+        st.plotly_chart(fig, config={"displayModeBar": False})
+    with right:
+        sizes = alloc.groupby("Size")["Weight"].sum().reindex(["Large cap", "Mid cap", "Small cap", "Unknown"]).dropna()
+        st.markdown("**By company size**")
+        st.bar_chart(sizes, horizontal=True, color="#1F4E79", height=170)
+        st.markdown("**By sector**")
+        st.dataframe(sectors.rename("Weight %").round(1), height=210)
+    st.caption(("Weighted by current value" if weights is not None else "Equally weighted (no quantities)")
+               + ". Box colour is today's move. Sector comes from screener.in; size is approximate "
+                 "(large ≥ ₹1 lakh Cr, mid ≥ ₹30,000 Cr). Stocks not yet analysed show as Unknown.")
+    st.stop()
+
+if section == "Alerts":
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.markdown(f"**Inbox** :gray[· {n_unread} unread]", width="content")
+        st.space("stretch")
+        if n_unread and st.button("Mark all read", icon=":material/done_all:", type="tertiary"):
+            alerts.mark_all_read()
+            st.rerun()
+    inbox = alerts.events(60)
+    if not inbox:
+        st.caption("No alerts yet. You'll see verdict changes, new filings, missed guidance and price alerts here "
+                   "— and get them as notifications or email, whichever you pick in Settings → Notifications.")
+    icons = {"verdict": ":material/psychology:", "filing": ":material/description:",
+             "guidance": ":material/handshake:", "price": ":material/price_change:"}
+    with st.container(border=bool(inbox)):
+        for e in inbox:
+            dot = ":blue[●] " if not e["read"] else ""
+            st.markdown(f"{dot}{icons.get(e['kind'], '')} **{e['title']}** :gray[· "
+                        f"{datetime.fromtimestamp(e['ts']).strftime('%d %b, %H:%M')}]  \n:gray[{e['body']}]")
+    st.markdown("**Price alerts**")
+    rules = alerts.rules()
+    for r in rules:
+        c1, c2 = st.columns([6, 1], vertical_alignment="center")
+        c1.markdown(f"**{r['ticker']}** {r['op']} ₹{r['level']:,.2f}"
+                    + (" :orange-badge[triggered]" if r["fired"] else " :gray-badge[watching]"))
+        if c2.button("", icon=":material/delete:", key=f"rule_{r['id']}", type="tertiary"):
+            alerts.delete_rule(r["id"])
+            st.rerun()
+    with st.form("new_rule", border=False):
+        a1, a2, a3, a4 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
+        t = a1.selectbox("Stock", sorted(uniq["ticker"]))
+        op = a2.selectbox("When price is", ["above", "below"])
+        level = a3.number_input("₹", min_value=0.0, value=float(prices.get(t, {}).get("price") or 0), step=1.0)
+        if a4.form_submit_button("Add alert", icon=":material/add_alert:"):
+            alerts.add_rule(t, op, level)
+            st.rerun()
+    st.stop()
+
+if section == "Digest":
+    past = alerts.digests()
+    n = alerts.prefs(settings)
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.caption(f"A digest is made every {alerts.DAYS[int(n['digest_day'])]} morning"
+                   + (" and sent by " + " and ".join({'mac': 'notification', 'email': 'email'}[c] for c in n["channels"])
+                      if n["channels"] else "") + ". Change this in Settings → Notifications.")
+        st.space("stretch")
+        if st.button("Make one now", icon=":material/refresh:"):
+            with st.spinner("Putting this week together…"):
+                alerts.make_digest(settings, send=False)
+            st.rerun()
+    if not past:
+        st.caption("No digest yet — make one now, or wait for the weekly one.")
+        st.stop()
+    pick = st.selectbox("Week", past, format_func=lambda d: f"{d['week']} · made "
+                        f"{datetime.fromtimestamp(d['ts']).strftime('%a %d %b, %H:%M')}", label_visibility="collapsed")
+    st.html(alerts.digest_html(pick["data"]))
+    if "email" in n["channels"] and st.button("Email this digest to me", icon=":material/mail:"):
+        problems = alerts.notify(f"Your weekly digest · {pick['week']}", "Your weekly digest is ready.",
+                                 {**settings, "notify": {**n, "channels": ["email"]}}, alerts.digest_html(pick["data"]))
+        st.toast(problems[0] if problems else "Sent.", icon=":material/error:" if problems else ":material/mail:")
+    st.stop()
 
 # --- Holdings grid -------------------------------------------------------------
 with st.container(horizontal=True, vertical_alignment="center"):

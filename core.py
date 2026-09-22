@@ -9,8 +9,11 @@ that has been parsed once is never parsed again, however many times it is
 re-analysed.
 """
 
+import base64
 import hashlib
 import io
+import json
+import zlib
 import os
 import random
 import re
@@ -359,6 +362,7 @@ def extract_all_numbers(pdf_path: Path, source_category: str = "",
         with pdfplumber.open(pdf_path) as pdf:
             for page_num, page in enumerate(pdf.pages[:MAX_PDF_PAGES_SCANNED], start=1):
                 text = page.extract_text() or ""
+                page.close()  # drop this page's parsed layout now, not when the whole PDF closes
                 if pages_out is not None:
                     pages_out.append((page_num, text))
                 lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -570,6 +574,12 @@ def _extract_table(soup, selector_id) -> pd.DataFrame | None:
 # PDF extraction, cached in the archive by file hash
 # --------------------------------------------------------------------------
 
+# Parsing is pure Python, so the GIL runs one parse at a time anyway: parallel
+# parses only multiplied memory (~200 MB per annual report) and thrashed.
+# Downloads stay parallel; each file is parsed as soon as the parser is free.
+_PARSE_LOCK = threading.Lock()
+
+
 def extract_and_index(path: Path, ticker: str, category: str) -> list[dict]:
     """Figures from one filing, parsed at most once ever.
 
@@ -589,7 +599,8 @@ def extract_and_index(path: Path, ticker: str, category: str) -> list[dict]:
         return cached
 
     pages: list[tuple[int, str]] = []
-    figures = extract_all_numbers(path, source_category=category, pages_out=pages)
+    with _PARSE_LOCK:
+        figures = extract_all_numbers(path, source_category=category, pages_out=pages)
     for f in figures:
         f["Category"] = classify_figure_category(f["Label"])
     try:
@@ -603,15 +614,15 @@ def extract_and_index(path: Path, ticker: str, category: str) -> list[dict]:
 # News
 # --------------------------------------------------------------------------
 
-@st.cache_data(ttl=NEWS_CACHE_TTL_SECONDS, show_spinner=False)
+@st.cache_data(ttl=NEWS_CACHE_TTL_SECONDS, max_entries=100, show_spinner=False)
 def get_news(ticker: str, company_name: str, ai_sig: tuple, _settings: dict) -> dict:
     """Cached apart from the scrape, so changing filing options never
     re-fetches headlines or re-spends tokens summarising the same ones."""
     headlines = fetch_company_news(ticker, company_name)
     news = {"headlines": headlines, "summary": None, "sentiment": None, "tokens": 0, "model": None}
     if ai_sig[0] and headlines:
-        news.update(llm.summarize_news(company_name, headlines, _settings),
-                    model=_settings["ai"]["model"], at=time.time())
+        news.update(llm.summarize_news(company_name, headlines, _settings), at=time.time())
+        news["model"] = llm.LAST_MODEL or _settings["ai"]["model"]
     return news
 
 
@@ -619,7 +630,7 @@ def get_news(ticker: str, company_name: str, ai_sig: tuple, _settings: dict) -> 
 # Scraping
 # --------------------------------------------------------------------------
 
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL_SECONDS, max_entries=60, show_spinner=False)  # ~0.5 MB of HTML each
 def fetch_company_page(ticker: str) -> str | None:
     return _fetch_html(BASE_URL.format(ticker=ticker))
 
@@ -632,7 +643,7 @@ def cached_analysis(ticker, company_name, metrics, quarterly_df, pros, cons, ai_
     analysis = llm.analyze(ticker, company_name, metrics, quarterly_df, pros, cons, _settings)
     if not analysis["summary"]:
         raise RuntimeError("the model returned no summary")
-    return {**analysis, "at": time.time()}
+    return {**analysis, "at": time.time(), "model": llm.LAST_MODEL or _settings["ai"]["model"]}
 
 
 def ai_signature(settings: dict) -> tuple:
@@ -676,6 +687,9 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
     result["company_name"] = sanitize_text(title_tag.get_text(strip=True)) if title_tag else ticker
     if on_name:
         on_name(result["company_name"])  # lets news start while filings download
+
+    for tag in soup.select('a[title="Sector"], a[title="Industry"]'):
+        result[tag["title"].lower()] = sanitize_text(tag.get_text(strip=True))
 
     try:
         for li in soup.select("#top-ratios li"):
@@ -766,7 +780,7 @@ def scrape_ticker(ticker: str, settings: dict, selected_categories: tuple[str, .
         result["ai_at"] = analysis["at"]
         result["ai_summary"] = sanitize_text(analysis["summary"])
         result["ai_verdict"] = analysis["verdict"]
-        result["ai_model"] = settings["ai"]["model"]
+        result["ai_model"] = analysis.get("model") or settings["ai"]["model"]
         result["ai_tokens"] = analysis["tokens"]
         if not result["ai_summary"]:
             # Why it failed, so the card can say more than "no summary".
@@ -940,7 +954,15 @@ def _df_to_json(df) -> dict | None:
     return {"columns": [str(c) for c in df.columns], "data": df.astype(object).where(df.notna(), None).values.tolist()}
 
 
+def _pack(obj) -> dict | None:
+    """Compress a big table inside a saved analysis (roughly 10x smaller). The
+    small fields beside it stay plain JSON, so SQL can still read a verdict."""
+    return None if obj is None else {"z": base64.b64encode(zlib.compress(json.dumps(obj).encode(), 6)).decode()}
+
+
 def _df_from_json(obj) -> pd.DataFrame | None:
+    if obj and "z" in obj:
+        obj = json.loads(zlib.decompress(base64.b64decode(obj["z"])))
     if not obj or not obj.get("columns"):
         return None
     return pd.DataFrame(obj["data"], columns=obj["columns"])
@@ -981,15 +1003,34 @@ def snapshot_of(result: dict) -> dict:
                          for h in (news.get("headlines") or [])]
     snap = {k: result.get(k) for k in
             ("ticker", "ok", "error", "error_friendly", "company_name", "metrics", "pros", "cons",
-             "documents", "downloaded", "ai_summary", "ai_verdict", "ai_model", "ai_tokens", "ai_at")}
+             "documents", "downloaded", "ai_summary", "ai_verdict", "ai_model", "ai_tokens", "ai_at",
+             "sector", "industry")}
     snap["news"] = news
     snap["figure_count"] = len(result.get("figures") or [])
     snap["sources"] = _sources_of(result)
     for key, _ in [("quarterly_df", "")] + [(k, "") for k, _ in STATEMENT_TABLES]:
         snap[key] = _df_to_json(result.get(key))
-    correlated = correlate_numbers(result)
-    snap["correlated"] = _df_to_json(correlated)
+    correlated = result.get("correlated")
+    if correlated is None:  # built once per analysis and kept, not rebuilt per compare/save
+        correlated = result["correlated"] = correlate_numbers(result)
+    snap["correlated"] = _pack(_df_to_json(correlated))
     return snap
+
+
+def compact_runs() -> int:
+    """One-off: compress the figure table in analyses saved before packing
+    existed, then give the space back. Lossless; a no-op once done."""
+    with archive.connect() as conn:
+        rows = conn.execute("SELECT id, snapshot FROM runs WHERE json_type(snapshot, '$.correlated') = 'object' "
+                            "AND json_type(snapshot, '$.correlated.z') IS NULL").fetchall()
+        for row in rows:
+            snap = json.loads(row["snapshot"])
+            snap["correlated"] = _pack(snap["correlated"])
+            conn.execute("UPDATE runs SET snapshot=? WHERE id=?", (json.dumps(snap, default=str), row["id"]))
+    if rows:
+        with archive.connect() as conn:
+            conn.execute("VACUUM")
+    return len(rows)
 
 
 def restore_snapshot(snap: dict) -> dict:

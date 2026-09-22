@@ -109,7 +109,6 @@ if run_button:
                         continue
                     previous, changes = core.changes_since_last(r)
                     r["changes"], r["previous_at"] = changes, previous["ts"] if previous else None
-                    r["correlated"] = core.correlate_numbers(r)
                     if features["history"]:
                         core.save_run(r, label=f"{len(tickers)} ticker run")
                 st.session_state.results = results

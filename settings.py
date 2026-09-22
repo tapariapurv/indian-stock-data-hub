@@ -54,6 +54,7 @@ DEFAULTS = {
         "tokens_error": 60,
         "tokens_guidance": 320,
         "tokens_synthesis": 260,
+        "tokens_chat": 1200,      # Ask AI replies: room for a real answer, streamed
     },
     # Per-provider connection details. Keys stay empty when you use env vars.
     # Prices are per million tokens and start at 0: the app will not invent a
@@ -96,7 +97,12 @@ DEFAULTS = {
     },
     # Every held stock is re-analysed this often in the background; 0 = only
     # once, when it is added.
-    "portfolio": {"refresh_hours": 24, "track_positions": True},
+    "portfolio": {"refresh_hours": 24, "track_positions": True, "max_stock_pct": 20, "max_sector_pct": 35},
+    # Where alerts and the weekly digest go: "mac" (a macOS notification) and/or
+    # "email" (sent by your own Google Apps Script web app, to you only).
+    "notify": {"channels": ["mac"], "email_url": "", "email_token": "",
+               "verdict": True, "filing": True, "guidance": True, "price": True,
+               "digest": True, "digest_day": 0},
     # How long saved work is kept. 0 = keep forever; a purge runs at startup.
     "storage": {
         "keep_runs_days": 180,       # saved analyses you can reopen from History
