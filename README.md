@@ -289,7 +289,7 @@ python tests/test_prompts.py --all      # every installed Ollama model
 | Stale numbers | Results are cached for an hour: **Settings → Clear cached results**. |
 | Guidance tab says no transcript | Tick **Concall Transcript** in the sidebar and run the analysis again. |
 
-More answers are in chapter 18 of the [user guide](static/user_guide.pdf).
+More answers are in chapter 21 of the [user guide](static/user_guide.pdf).
 
 ## Disclaimer
 
