@@ -477,26 +477,54 @@ SCRATCHPAD_RE = re.compile(
 DATA_ECHO_RE = re.compile(r"^[A-Za-z][\w &/()'.-]{0,34}:\s*[\u20b9$]?[\d,.\s/%()-]*$")
 
 
-def _json_reply(text: str | None) -> dict | None:
-    """The first JSON object in a reply, whatever wrapping came with it.
+_PAIR_RE = re.compile(r'"(\w+)"\s*:\s*"(.*?)(?:"\s*[,}]|$)', re.S)
+
+
+def _json_salvage(text: str | None) -> dict | None:
+    """Fields out of JSON that was cut off before its closing brace.
+
+    The token cap lands mid-string often enough to matter: the model had
+    answered correctly, json.loads failed on the truncation, and the whole
+    raw blob was shown to the user as the summary with no verdict at all.
+    Reading the pairs directly rescues everything written before the cut.
+    """
+    if not text or "{" not in text:
+        return None
+    found = {k.lower(): v.strip() for k, v in _PAIR_RE.findall(text[text.index("{"):])}
+    return found or None
+
+
+def _json_reply(text: str | None, *want: str) -> dict | None:
+    """The JSON object in a reply, whatever wrapping came with it.
 
     Asking for JSON is the one instruction every provider's chat model
     follows reliably; a two-line text template is not -- one hosted model
     read the template back verbatim instead of filling it in.
+
+    Parsed with raw_decode rather than a `{.*?}` regex, which cannot see
+    nesting: asked for a verdict, one model also returned a "key_ratios"
+    object, and the regex handed back the innermost `{"Sales": 3510}` --
+    a perfectly valid dict with none of the fields that were asked for.
+    `want` names those fields, so a stray inner object is skipped.
     """
     if not text:
         return None
     body = text.replace("```json", " ").replace("```", " ")
-    # Last match, not first: a model that reasons out loud may quote the
-    # requested shape while restating the task, then answer underneath.
-    for match in reversed(list(JSON_RE.finditer(body))):
-        try:
-            parsed = json.loads(match.group())
-        except ValueError:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(body):
+        if char != "{":
             continue
-        if isinstance(parsed, dict) and any(parsed.values()):
-            # Models are inconsistent about key case ("SUMMARY" vs "summary").
-            return {str(k).lower(): v for k, v in parsed.items()}
+        try:
+            parsed, _ = decoder.raw_decode(body[index:])
+        except ValueError:
+            continue  # truncated or not JSON: try the next opening brace
+        if not isinstance(parsed, dict) or not any(parsed.values()):
+            continue
+        # Models are inconsistent about key case ("SUMMARY" vs "summary").
+        flat = {str(k).lower(): v for k, v in parsed.items()}
+        if want and not any(w in flat for w in want):
+            continue
+        return flat
     return None
 
 
@@ -542,15 +570,94 @@ def _drop_cut_off_sentence(text: str) -> str:
 
 
 def _field(text: str, name: str, options: str) -> str | None:
-    match = re.search(rf"{name}[:\s]+.*?\b({options})\b", text, re.I)
+    """The one allowed word that follows a label, e.g. verdict -> Positive.
+
+    The separator has to tolerate JSON punctuation: on `"verdict": "Positive"`
+    the old `[:\\s]+` failed at the closing quote, so a correct answer inside
+    valid JSON was read as no answer at all.
+    """
+    match = re.search(rf"{name}\W{{0,6}}\b({options})\b", text, re.I)
     return match.group(1).capitalize() if match else None
+
+
+def _strip_markers(text: str | None) -> str | None:
+    """Drop [ANSWER] / [END] fences wherever they landed.
+
+    A model that half-follows the fencing rule leaves one marker behind, and
+    a summary that opens with "[END]" was shipped to users before this."""
+    return re.sub(r"\[\s*/?\s*(?:ANSWER|END)\s*\]", " ", text).strip() if text else text
+
+
+def _two_fields(raw: str | None, label: str, options: str, prose: str) -> tuple[str | None, str | None]:
+    """(one-word label, prose) out of a reply, whatever wrapper it arrived in.
+
+    Every judgement call in the app has this shape -- verdict + summary,
+    sentiment + summary, status + why -- so they all parse through here."""
+    if not raw:
+        return None, None
+    reply = _json_reply(raw, label, prose) or _json_salvage(raw)
+    value = body = None
+    if reply:
+        value = _field(f"{label}: {reply.get(label, '')}", label, options)
+        body = _clean_answer(str(reply.get(prose) or ""))
+    if value and body:
+        return value, body
+    clean = _strip_markers(raw).replace("*", "")
+    value = value or _field(clean, label, options)
+    if not body:
+        match = re.search(rf"{prose}\s*[:\-]\s*(.*)", clean, re.S | re.I)
+        body = _clean_answer(match.group(1) if match else clean)
+    return value, body
 
 
 # --------------------------------------------------------------------------
 # The app's prompts
+#
+# One contract everywhere: a single JSON object, asked for once. Earlier
+# versions asked for JSON *and* a "VERDICT:" line *and* an [ANSWER] fence in
+# the same call; small models answered a different one each time, which is
+# how "[END]" ended up inside a summary and how a verdict came back empty.
+#
+# Three rules do most of the work, and they are short on purpose -- every
+# token spent on instructions is a token not spent on the company:
+#   1. Only the figures given, copied exactly. (Stops invented numbers.)
+#   2. Decision rules with real thresholds, not adjectives. (A 0.5B model
+#      has no idea whether 7.6% ROE is good; told the cut-off, it does.)
+#   3. Never a bare phrase that could be mistaken for an answer -- "three to
+#      five sentences" came back once as the answer itself.
 # --------------------------------------------------------------------------
 
 AI_QUARTERLY_ROWS = ("Sales", "Operating Profit", "OPM", "Net Profit", "EPS")
+
+# The shared preamble. Kept to two sentences: it is prepended to every
+# analytic call, so its cost is paid on every company, every run.
+ANALYST = ("You are a careful equity analyst covering Indian listed companies. "
+           "Use only the figures given to you: never add outside knowledge, and copy every "
+           "number exactly as it appears in the input. Reply with one JSON object and nothing else.")
+
+
+# The citation example, kept here so the guard below can recognise it coming
+# back. Deliberately free of figures: see synthesize_search.
+EXAMPLE_ANSWER = "The new plant will add capacity [2], funded from internal accruals [1]."
+
+
+def _echoes(answer: str | None, example: str) -> bool:
+    """Is this the example handed back instead of an answer?
+
+    A model too small for the task copies the illustration. Showing that to
+    someone as an answer about their company is worse than showing nothing,
+    so it is caught here rather than trusted to the prompt.
+    """
+    if not answer:
+        return False
+    import difflib
+    trim = lambda t: re.sub(r"[\W\d_]+", " ", t.lower()).strip()
+    return difflib.SequenceMatcher(None, trim(answer), trim(example)).ratio() > 0.6
+
+
+def _json_only(shape: str, *rules: str) -> str:
+    """A system prompt: who you are, the exact shape wanted, then the rules."""
+    return "\n".join([ANALYST, f"Reply in this form: {shape}", *rules])
 
 
 def _schema(*fields: str) -> dict:
@@ -558,6 +665,60 @@ def _schema(*fields: str) -> dict:
     that every other provider's JSON mode is happy to ignore."""
     return {"type": "OBJECT", "properties": {f: {"type": "STRING"} for f in fields},
             "required": list(fields)}
+
+
+def _metric_num(metrics: dict, *names: str) -> float | None:
+    """The first of these ratios that is present, as a number ("7.60%" -> 7.6)."""
+    for name in names:
+        for key, value in (metrics or {}).items():
+            if key.strip().lower() == name.lower():
+                match = re.search(r"-?\d[\d,]*\.?\d*", str(value))
+                if match:
+                    return float(match.group().replace(",", ""))
+    return None
+
+
+def _profit_direction(quarterly_df) -> int | None:
+    """+1 if net profit rose between the last two quarters, -1 if it fell."""
+    if quarterly_df is None or getattr(quarterly_df, "empty", True) or len(quarterly_df.columns) < 3:
+        return None
+    rows = quarterly_df[quarterly_df.iloc[:, 0].astype(str).str.strip().str.lower()
+                        .str.startswith("net profit")]
+    if rows.empty:
+        return None
+    try:
+        before = float(str(rows.iloc[0, -2]).replace(",", ""))
+        after = float(str(rows.iloc[0, -1]).replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+    return 0 if before == after else (1 if after > before else -1)
+
+
+def verdict_from_metrics(metrics: dict, quarterly_df) -> str | None:
+    """The verdict, worked out in code rather than asked of the model.
+
+    These are the same thresholds the prompt used to describe, and moving
+    them here is what made the verdict trustworthy: a small local model
+    cannot reliably decide that 7.6% is below 12%, and it called a company
+    with a 7.6% ROE "Positive" every time. Arithmetic the app can do itself
+    should never be delegated to a language model.
+
+    Returns None when the ratios needed are missing, and the model is asked
+    for a verdict instead.
+
+    ponytail: three plain thresholds, deliberately. They are documented in
+    the guide so the badge can be argued with; tune them there, not here.
+    """
+    roe = _metric_num(metrics, "ROE", "Return on equity")
+    debt = _metric_num(metrics, "Debt to equity", "Debt to Equity Ratio")
+    direction = _profit_direction(quarterly_df)
+    if roe is None and debt is None and direction is None:
+        return None
+    if (roe is not None and roe < 12) or (debt is not None and debt > 1.5) or direction == -1:
+        return "Cautious"
+    if roe is not None and roe > 18 and direction == 1:
+        return "Positive"
+    return "Neutral"
 
 
 def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -> dict:
@@ -571,56 +732,70 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
     if not metrics and quarterly_df is None and not pros and not cons:
         return {"summary": None, "verdict": None, "tokens": 0}
 
-    ratios = "; ".join(f"{k} {v}" for k, v in metrics.items() if k != "Face Value") or "none"
+    # One metric per line, each named. Run together on one line, a small model
+    # reads "ROE 7.60%" straight after a strength about dividends and reports
+    # a "dividend payout of 7.60%" -- the right number under the wrong label.
+    ratios = "\n".join(f"- {k}: {v}" for k, v in metrics.items() if k != "Face Value") or "- none given"
     quarters = ""
     if quarterly_df is not None and not quarterly_df.empty and len(quarterly_df.columns) >= 3:
         prev_q, last_q = quarterly_df.columns[-2], quarterly_df.columns[-1]
-        lines = [f"{row['Metric']} {row[prev_q]} -> {row[last_q]}"
+        lines = [f"- {row['Metric']}: {row[prev_q]} -> {row[last_q]}"
                  for _, row in quarterly_df.iterrows()
                  if str(row["Metric"]).startswith(AI_QUARTERLY_ROWS)]
-        quarters = f"Quarterly, Rs Cr ({prev_q} -> {last_q}): " + "; ".join(lines) if lines else ""
+        quarters = f"\nQuarterly results in Rs Crore, {prev_q} then {last_q}:\n" + "\n".join(lines) if lines else ""
 
-    facts = (f"Company: {company_name} ({ticker})\n"
-             f"Ratios: {ratios}\n{quarters}\n"
-             f"Strengths: {'; '.join(p[:120] for p in pros[:4]) or 'none'}\n"
-             f"Risks: {'; '.join(c[:120] for c in cons[:4]) or 'none'}")
-    system = ("You are an equity analyst. Use only the data given and never invent a number. "
-              + ANSWER_RULE +
-              " Inside the block write two lines: a line beginning 'VERDICT: ' followed by one "
-              "word (Positive, Neutral or Cautious), then a line beginning 'SUMMARY: ' followed "
-              "by three sentences on the financial position and outlook, quoting the key numbers.")
+    facts = (f"Company: {company_name} ({ticker})\n\nKey ratios:\n{ratios}\n{quarters}\n"
+             f"\nStrengths flagged by the data provider:\n"
+             + ("\n".join(f"- {p[:120]}" for p in pros[:4]) or "- none") +
+             f"\n\nRisks flagged by the data provider:\n"
+             + ("\n".join(f"- {c[:120]}" for c in cons[:4]) or "- none"))
+    # The verdict is decided here, in code, from the ratios. The model is
+    # told what it is and writes only the prose -- which also stops it
+    # praising a company the rules called Cautious.
+    ruled = verdict_from_metrics(metrics, quarterly_df)
+    if ruled:
+        system = _json_only(
+            '{"summary": "..."}',
+            f'This company has already been assessed as "{ruled}". Explain that assessment in at '
+            'most 70 words of prose, using the figures below.',
+            'Quote the figures that support it and name the metric each one belongs to. Do not '
+            'contradict the assessment and do not restate these instructions.',
+            'No headings and no bullet points.')
+        fields = ("summary",)
+    else:
+        system = _json_only(
+            '{"verdict": "Positive", "summary": "..."}',
+            'Set "verdict" by the first rule that matches:',
+            '- "Cautious" if ROE is below 12%, or Debt to equity is above 1.5, or net profit fell '
+            'between the two quarters shown.',
+            '- "Positive" if ROE is above 18% and net profit rose between the two quarters shown.',
+            '- "Neutral" in every other case.',
+            '"summary" is prose of at most 70 words on the financial position and outlook. Quote '
+            'the figures that decided the verdict and name the metric each one belongs to. No '
+            'headings, no bullet points, no repetition of these instructions.')
+        fields = ("verdict", "summary")
     # A verbose model spends its first hundred tokens restating the task, so
     # the floor here is what stops a tight user setting from starving it.
     budget = max(int(settings["ai"]["tokens_analysis"]), 320)
-    raw, tokens = complete(f"{facts}\n\n{system}", budget, settings, "Company analysis",
-                           system=system, schema=_schema("verdict", "summary"))
+    raw, tokens = complete(facts, budget, settings, "Company analysis",
+                           system=system, schema=_schema(*fields))
 
-    verdict = summary = None
-    for candidate in (_marked(raw), raw):
-        if not candidate:
-            continue
-        reply = _json_reply(candidate)
-        if reply:
-            verdict = verdict or _field(f"verdict: {reply.get('verdict', '')}", "verdict",
-                                        "Positive|Neutral|Cautious")
-            summary = summary or _clean_answer(str(reply.get("summary") or ""))
-        clean = candidate.replace("*", "")
-        verdict = verdict or _field(clean, "verdict", "Positive|Neutral|Cautious")
-        if not summary:
-            match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-            summary = _clean_answer(match.group(1) if match else clean)
-        if summary:
-            break
+    verdict, summary = _two_fields(raw, "verdict", "Positive|Neutral|Cautious", "summary")
+    verdict = ruled or verdict
 
     if not summary:
         # One plain retry with room to spare: a model that narrates needs the
-        # budget for its narration before it reaches the answer.
+        # budget for its narration before it reaches the answer. No mention of
+        # a sentence count -- asked for "three to five sentences", a small
+        # model has answered with the phrase "three to five" itself.
         retry, retry_tokens = complete(
-            f"{facts}\n\nWrite three sentences on this company's financial position and outlook, "
-            f"quoting the key numbers above. {ANSWER_RULE}",
-            max(budget * 3, 600), settings, "Company analysis (retry)")
+            facts, max(budget * 3, 600), settings, "Company analysis (retry)",
+            system=(ANALYST.replace("Reply with one JSON object and nothing else.", "")
+                    + " Write at most 70 words of plain prose on this company's financial position "
+                      "and outlook, quoting the key figures above and naming the metric each one "
+                      "belongs to. Do not repeat these instructions."))
         tokens += retry_tokens
-        summary = _clean_answer(_marked(retry) or retry)
+        summary = _clean_answer(_strip_markers(_marked(retry) or retry))
 
     return {"summary": _drop_cut_off_sentence(summary) if summary else None,
             "verdict": verdict, "tokens": tokens}
@@ -632,31 +807,28 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
     if not headlines:
         return {"summary": None, "sentiment": None, "tokens": 0}
     lines = "\n".join(f"- {h['title']} ({h['source']})" for h in headlines)
-    system = ('Reply with one JSON object and nothing else, in this form: '
-              '{"sentiment": "Mixed", "summary": "..."}. '
-              '"sentiment" is exactly one of Positive, Mixed or Negative. '
-              '"summary" is two sentences on what is happening with the company. '
-              'Use only the headlines given.')
-    raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}\n\nReturn the JSON object now.",
+    # "Mixed" is the middle option, and a model with no rule picks the middle
+    # every time -- a fraud probe and a big order win both came back Mixed.
+    # Naming the events that force a side is what breaks the tie.
+    system = _json_only(
+        '{"sentiment": "Negative", "summary": "..."}',
+        'Set "sentiment" by the first rule that matches:',
+        '- "Negative" if any headline reports a downgrade, a guidance cut, an investigation or '
+        'regulatory action, fraud, a resignation, a loss, or a fall in profit.',
+        '- "Positive" if the headlines are mainly new orders, profit growth, upgrades, expansion '
+        'or approvals.',
+        '- "Mixed" only when clearly good and clearly bad news both appear.',
+        '"summary" is at most 45 words on what is happening, drawn only from these headlines.')
+    raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}",
                            max(int(settings["ai"]["tokens_news"]), 260), settings, "News digest",
                            system=system,
                            schema=_schema("sentiment", "summary"))
 
-    sentiment = summary = None
-    reply = _json_reply(raw)
-    if reply:
-        sentiment = _field(f"sentiment: {reply.get('sentiment', '')}", "sentiment",
-                           "Positive|Mixed|Negative")
-        summary = _clean_answer(str(reply.get("summary") or ""))
-    if raw and not summary:
-        clean = raw.replace("*", "")
-        sentiment = sentiment or _field(clean, "sentiment", "Positive|Mixed|Negative")
-        match = re.search(r"SUMMARY:\s*(.*)", clean, re.S | re.I)
-        summary = _clean_answer(match.group(1) if match else clean)
+    sentiment, summary = _two_fields(raw, "sentiment", "Positive|Mixed|Negative", "summary")
     if not summary:
         retry, retry_tokens = complete(
             f"Recent headlines about {company_name}:\n{lines}\n\n"
-            "Write two sentences on what is happening with this company, using only these "
+            "Write at most 45 words on what is happening with this company, using only these "
             "headlines. Plain prose only: no headings, no labels, and do not repeat this instruction.",
             max(settings["ai"]["tokens_news"] * 3, 500), settings, "News digest (retry)")
         tokens += retry_tokens
@@ -707,13 +879,22 @@ def extract_guidance(company_name: str, quarter: str, transcript_text: str, sett
             picked.append(s)
         if len(picked) >= 18:
             break
+    # The one call that is not JSON: a flat "a | b | c" line per claim parses
+    # just as strictly, costs fewer tokens than the braces and quoting, and
+    # every model tested gets it right. The instructions live in the system
+    # prompt like everywhere else, so the user turn is only the transcript.
+    # The instructions stay in the user turn here, unlike every other call.
+    # Moving them to the system prompt was measured and lost every claim on
+    # a 0.5B model -- small models follow a format shown next to the data far
+    # better than one described somewhere above it.
     prompt = (
         f"Statements from {company_name}'s {quarter} earnings call:\n"
         + "\n".join(f"- {s}" for s in picked)
-        + "\n\nList only the statements where management commits to a future outcome. "
+        + "\n\nList only the statements where management commits to a specific future outcome. "
           "One per line, no markdown, exactly this format:\n"
           "metric | what management committed to | by when\n"
-          "Use the words from the statement. Skip anything vague. Maximum 6 lines."
+          "Use the words and numbers from the statement itself. Skip anything vague: being "
+          "pleased with a quarter or remaining optimistic is not a commitment. Maximum 6 lines."
     )
     raw, tokens = complete(prompt, settings["ai"]["tokens_guidance"], settings, "Transcript reading")
     if not raw:
@@ -728,31 +909,29 @@ def extract_guidance(company_name: str, quarter: str, transcript_text: str, sett
 def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict) -> tuple[dict, int]:
     """Did what management promised actually happen? Graded against the
     numbers the app scraped, never against the model's own knowledge."""
-    system = ('Reply with one JSON object and nothing else, in this form: '
-              '{"status": "Delivered", "why": "..."}. '
-              '"status" is exactly one of Delivered, Missed or Unclear. '
-              '"why" is one sentence quoting a number from the reported results. '
-              'Judge only against the reported numbers given; never use outside knowledge.')
+    # Grading a promise is a comparison, so the rules are a comparison. Left
+    # to its own judgement a small model reads the confident wording of the
+    # promise and marks it Delivered -- it graded "margin to 28%" as delivered
+    # against a reported 22%.
+    system = _json_only(
+        '{"status": "Missed", "why": "..."}',
+        'Compare the number management promised with the number actually reported, then set '
+        '"status" by the first rule that matches:',
+        '- "Unclear" if the reported results do not contain a number for that metric.',
+        '- "Delivered" if the reported number reaches or beats the promised number.',
+        '- "Missed" if the reported number falls short of the promised number, including when it '
+        'moved the wrong way.',
+        '"why" is one sentence of at most 30 words that states the promised number and the '
+        'reported number side by side.')
     prompt = (
-        f"{company_name} management said: \"{claim['claim']}\" "
-        f"(metric: {claim['metric']}, by {claim['horizon']}).\n"
-        f"What the reported results since then show:\n{actuals}\n\nReturn the JSON object now."
+        f"{company_name} management promised: \"{claim['claim']}\"\n"
+        f"Metric: {claim['metric']}. By when: {claim['horizon']}.\n\n"
+        f"Reported results since then:\n{actuals}"
     )
-    raw, tokens = complete(prompt, 120, settings, "Guidance check", system=system,
+    raw, tokens = complete(prompt, 160, settings, "Guidance check", system=system,
                            schema=_schema("status", "why"))
-    reply = _json_reply(raw)
-    if reply:
-        status = _field(f"status: {reply.get('status', '')}", "status", "Delivered|Missed|Unclear")
-        why = _clean_answer(str(reply.get("why") or ""))
-        if status:
-            return {"status": status, "why": _drop_cut_off_sentence(why) if why else None}, tokens
-    if not raw:
-        return {"status": None, "why": None}, tokens
-    clean = raw.replace("*", "")
-    match = re.search(r"WHY:\s*(.*)", clean, re.S | re.I)
-    body = _clean_answer(match.group(1) if match else clean)
-    return {"status": _field(clean, "status", "Delivered|Missed|Unclear"),
-            "why": _drop_cut_off_sentence(body) if body else None}, tokens
+    status, why = _two_fields(raw, "status", "Delivered|Missed|Unclear", "why")
+    return {"status": status, "why": _drop_cut_off_sentence(why) if why else None}, tokens
 
 
 def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
@@ -764,22 +943,36 @@ def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
     the retrieving, and nothing is invented because the terms are only ever
     used to look things up.
     """
-    prompt = (
-        f"An analyst is searching Indian company filings (earnings calls, investor presentations, "
-        f"annual reports) for: \"{question}\"\n"
-        "List the words and short phrases that would actually appear in those documents, including "
-        "the formal term, common abbreviations and close synonyms. Indian financial vocabulary."
-    )
-    system = ('Reply with one JSON object and nothing else: {"terms": "a, comma, separated, list"}. '
-              "At most 8 items, no explanation.")
+    # The old prompt named the document types it was searching ("earnings
+    # calls, investor presentations, annual reports"); a small model handed
+    # exactly those three phrases back as the search terms. Nothing that is
+    # not the topic goes in the prompt any more.
+    prompt = f'Search topic: "{question}"'
+    # The shape carries a worked example rather than describing one: shown
+    # "nim" expanding to "net interest margin" in the shape itself, a model
+    # generalises to capex -> capital expenditure; told the same thing as a
+    # sentence, it repeats the question back instead.
+    system = _json_only(
+        '{"terms": "net interest margin, nim, interest spread, margin on advances"}',
+        'List the words and phrases an Indian company filing would actually use for this topic: '
+        'the full formal term, common abbreviations, and close synonyms.',
+        'Always expand an abbreviation into its full form as well (for example "NIM" would give '
+        '"net interest margin").',
+        'At most 8 items, comma separated, lower case. List only search terms for the topic above: '
+        'never document types, never the example terms, and never words taken from these '
+        'instructions.')
     raw, tokens = complete(prompt, max(160, settings["ai"]["tokens_news"]), settings,
                            "Archive search", system=system, schema=_schema("terms"))
     if not raw:
         return [], tokens
-    reply = _json_reply(raw)
+    reply = _json_reply(raw) or _json_salvage(raw)
     line = str(reply.get("terms", "")) if reply else raw.replace("\n", ",").split(":")[-1]
     terms = [term.strip(" .-\"'*[]") for term in line.split(",")]
-    return [term for term in terms if 2 < len(term) < 40][:8], tokens
+    # Deduplicate in code rather than asking for it: a small model given the
+    # same topic eight times over happily returns "capex plan" eight times,
+    # and each repeat costs a search pass for nothing.
+    seen = dict.fromkeys(t.lower() for t in terms if 2 < len(t) < 40)
+    return list(seen)[:8], tokens
 
 
 RANK_RE = re.compile(r"\d+")
@@ -799,9 +992,14 @@ def rerank_passages(question: str, snippets: list[dict], settings: dict,
         f"[{i + 1}] {s['ticker']} {s['category']} p{s['page']}: "
         f"{' '.join((s.get('snippet') or s['text'])[:160].split())}"
         for i, s in enumerate(snippets[:15]))
-    system = ('Reply with one JSON object and nothing else: {"passages": "3, 1, 7"} -- the numbers '
-              f"of the passages that genuinely help, most useful first, at most {keep}. "
-              'Use {"passages": ""} if none are relevant.')
+    system = _json_only(
+        '{"passages": "3, 1, 7"}',
+        f'List the numbers of the passages that actually answer the question, best first, at most '
+        f'{keep} of them.',
+        'A passage counts only if it discusses the subject of the question. A passage that merely '
+        'repeats a word from the question in another sense does not count -- "share capital" is '
+        'not "capital expenditure", "human capital" is not an investment plan.',
+        'Use {"passages": ""} if none of them are relevant. Numbers only, no explanation.')
     raw, tokens = complete(f"Question: {question}\n\nNumbered passages from company filings:\n{listing}",
                            200, settings, "Archive ranking", system=system, schema=_schema("passages"))
     if not raw:
@@ -842,10 +1040,23 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict,
                  f"If the question asks which, how many, or whether a company is involved, answer "
                  f"from this tally and name the companies; the passages are only for detail and "
                  f"quotes.")
-    system = ('Reply with one JSON object and nothing else: {"answer": "..."}. '
-              'The answer is three to five sentences, using ONLY the passages given, quoting their '
-              'figures and citing each claim as [1], [2]. Where companies differ, say how. '
-              'If the passages do not answer the question, say exactly what is missing.')
+    # Never a bare count in the instructions: asked for "three to five
+    # sentences", a small model replied with the answer "three to five years".
+    # A word limit cannot be mistaken for the content.
+    # The example shows where the bracket goes and nothing else. An earlier
+    # version illustrated it with realistic figures ("Rs 1,500 crore [2]")
+    # and a 0.5B model copied them into its answer as though they were real
+    # -- inventing a capex number for a company it had just been given the
+    # true one for. An example in a finance prompt must contain no figure a
+    # model could pass off as data.
+    system = _json_only(
+        '{"answer": "%s"}' % EXAMPLE_ANSWER,
+        'Answer the question in at most 120 words, using only the passages given.',
+        'Quote the figures from the passages, and put the number of the passage each figure came '
+        'from in square brackets straight after it, as the example shows. Never copy the wording '
+        'or any value out of the example itself. Where companies differ, say how.',
+        'If the passages do not answer the question, say plainly which part is missing rather '
+        'than filling the gap.')
     thread = ""
     if history:
         thread = "Earlier in this conversation:\n" + "\n".join(
@@ -855,10 +1066,12 @@ def synthesize_search(question: str, snippets: list[dict], settings: dict,
                            f"Question: {question}",
                            settings["ai"]["tokens_synthesis"], settings, "Archive answer",
                            system=system, schema=_schema("answer"))
-    reply = _json_reply(raw)
+    reply = _json_reply(raw, "answer")
     answer = _clean_answer(str(reply.get("answer") or "")) if reply else None
     if not answer:
-        answer = _clean_answer(_marked(raw) or raw)
+        answer = _clean_answer(_strip_markers(_marked(raw) or raw))
+    if _echoes(answer, EXAMPLE_ANSWER):
+        return None, tokens  # the example read back, not an answer
     return (_drop_cut_off_sentence(answer) if answer else None), tokens
 
 
