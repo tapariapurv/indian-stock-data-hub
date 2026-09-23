@@ -201,8 +201,17 @@ def _fts_query(question: str, extra_terms=()) -> str:
     terms = [f'"{w}"' for w in words]
     for term in extra_terms or ():
         term = re.sub(r'[^a-z0-9 \'&.-]', " ", str(term).lower()).strip()
-        if len(term) > 2:
-            terms.append(f'"{term}"')  # a term with spaces becomes a phrase match
+        if len(term) <= 2:
+            continue
+        terms.append(f'"{term}"')  # a term with spaces becomes a phrase match
+        # A phrase matches only those exact consecutive words. Asked about
+        # capex, a model suggests "capital expenditure plan", which misses a
+        # transcript saying "capital expenditure of Rs 1,200 crore" -- and
+        # the question is then answered "no mention of that" from a filing
+        # that says it plainly. The phrase's own words are OR-ed in too, so
+        # the passage is found; bm25 still floats the exact phrase above it.
+        if " " in term:
+            terms += [f'"{w}"' for w in term.split() if len(w) > 2 and w not in STOPWORDS]
     return " OR ".join(dict.fromkeys(terms))
 
 

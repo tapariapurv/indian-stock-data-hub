@@ -76,7 +76,7 @@ def _analysis_text(snap: dict) -> str:
 
 
 def build_context(question: str, history: list[dict], scope: list[str] | None = None,
-                  use_filings: bool = True) -> tuple[str, list[dict]]:
+                  use_filings: bool = True, settings: dict | None = None) -> tuple[str, list[dict]]:
     """(numbered source text for the prompt, source list for the UI)."""
     known = _known()
     tickers = scope or mentioned(question, known)
@@ -120,15 +120,30 @@ def build_context(question: str, history: list[dict], scope: list[str] | None = 
     if use_filings:
         terms = [w for w in re.findall(r"[a-z0-9][a-z0-9'&.-]*", question.lower())
                  if len(w) > 2 and w not in archive.STOPWORDS]
-        for hit in archive.search(question, tickers or None, limit=6):
+        hits = archive.search(question, tickers or None, limit=6)
+        # The gap between a question and a filing is vocabulary, not logic:
+        # ask about "capex" and the transcript says "capital expenditure", so
+        # a plain keyword search finds nothing at all. The Archive page has
+        # always expanded the wording; this one did not, which is why the
+        # chat could answer "no mention of that" about a filing it held.
+        # Only on a poor result, so the usual question still costs one call.
+        extra: list[str] = []
+        if len(hits) < 3 and settings and len(question.split()) > 2 and core.ai_signature(settings)[0]:
+            extra, _ = llm.expand_query(question, core._wide_context(settings))
+            if extra:
+                found = archive.search(question, tickers or None, limit=6, extra_terms=extra)
+                seen = {(h["ticker"], h["page"], h["category"]) for h in hits}
+                hits += [h for h in found if (h["ticker"], h["page"], h["category"]) not in seen]
+        for hit in hits[:6]:
             add("filing", f"{hit['ticker']} · {hit['category']} · page {hit['page']}",
-                core._focus(hit["text"], terms), ticker=hit["ticker"], page=hit["page"], path=hit.get("path"))
+                core._focus(hit["text"], terms + extra), ticker=hit["ticker"], page=hit["page"],
+                path=hit.get("path"))
     return "\n\n".join(blocks), sources
 
 
 def answer(question: str, history: list[dict], settings: dict, holder: dict, scope=None, use_filings=True):
     """Stream the answer text; when done, holder has sources, followups, text, model, error."""
-    context, holder["sources"] = build_context(question, history, scope, use_filings)
+    context, holder["sources"] = build_context(question, history, scope, use_filings, settings)
     messages = [{"role": t["role"], "content": t["content"]} for t in history[-6:]]
     messages.append({"role": "user", "content": (f"SOURCES:\n{context}\n\n" if context else "SOURCES: none\n\n")
                      + f"QUESTION: {question}"})
