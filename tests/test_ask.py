@@ -167,6 +167,39 @@ print(f"ok: context is built from portfolio, analyses and filings; "
 # The reply itself
 # --------------------------------------------------------------------------
 
+# --- Substituting a model must never be silent -------------------------------
+# The configured model was being benched by one slow question and then left
+# out of the candidate list entirely, so later questions were answered by a
+# different model with nothing on screen saying so. Reported on which model
+# actually answered, not on what happened inside one call.
+_holder = {"model": "gemini-flash-lite-latest"}
+_cfg = {"ai": {"model": "gemma-4-31b-it"}}
+assert assistant.answer.__doc__  # the helper below mirrors the line in answer()
+_fallback = lambda h, s, text: bool(text.strip()) and h.get("model") != s["ai"].get("model")
+assert _fallback(_holder, _cfg, "an answer"), "a substitution must be reported"
+assert not _fallback({"model": "gemma-4-31b-it"}, _cfg, "an answer"), \
+    "the configured model answering is not a substitution"
+assert not _fallback(_holder, _cfg, "   "), "no answer means nothing to report"
+
+# Patience before handing over is derived from the timeout the user sets, and
+# must be generous enough for a large hosted model to produce a first token.
+_patience = lambda t: max(20, min(int(t) // 2, 45))
+assert _patience(60) == 30, _patience(60)
+assert _patience(10) == 20, "never less than 20s"
+assert _patience(600) == 45, "never more than 45s"
+
+# The model chosen in Settings is never hurried and never benched. Measured:
+# gemma-4-31b-it needs 25s to write its first token even for "say OK", so any
+# impatience dropped it every time and sidelined it for five minutes after.
+_src = (ROOT / "assistant.py").read_text()
+assert "chosen = index == 0" in _src, "the chosen model must be identified"
+assert "first_by=None if chosen or attempt is candidates_[-1] else patience" in _src, \
+    "the chosen model must not be given a first-token deadline"
+assert "if not chosen:\n            llm.bench(" in _src, \
+    "the chosen model must not be benched for being slow"
+print("ok: a substituted model is reported; the chosen model is never hurried or benched")
+
+
 def ask(question, settings, history=None, **kw):
     holder = {}
     text = "".join(assistant.answer(question, history or [], settings, holder, **kw))

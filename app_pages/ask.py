@@ -119,7 +119,8 @@ if question and ai_ready:
         st.write_stream(chained())
         sources = holder.get("sources") or []
     meta = (f":material/memory: `{holder.get('model')}`"
-            + (f" · stood in for `{settings['ai']['model']}`, which was busy" if holder.get("fallback") else "")
+            + (f" · stood in for `{settings['ai']['model']}`, which was busy or too slow to start"
+               if holder.get("fallback") else "")
             + f" · {holder.get('seconds', 0):.0f}s · {len(sources)} source(s)")
     ss.chat.append({"role": "assistant", "content": holder.get("text") or
                     f":material/error: No answer — {holder.get('error')}. Try again in a moment.",

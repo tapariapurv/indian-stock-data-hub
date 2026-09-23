@@ -173,13 +173,28 @@ def answer(question: str, history: list[dict], settings: dict, holder: dict, sco
     started, buf, sent, tried = time.time(), "", 0, []
     candidates_ = llm.candidates(settings)
     say = holder.get("progress") or (lambda _msg: None)
-    for attempt in candidates_:
+    # How long to let the chosen model think before handing the question to
+    # the next one. It was a flat 15s, which quietly disqualified every large
+    # hosted model: gemma-4-31b-it never answered a single chat, because it
+    # takes longer than that to produce a first token, and was then benched
+    # for five minutes so the questions after it went elsewhere too. Derived
+    # from the request timeout the user already sets, so raising that raises
+    # this as well.
+    patience = max(20, min(int(settings["ai"].get("timeout", 60)) // 2, 45))
+    for index, attempt in enumerate(candidates_):
+        # The model chosen in Settings waits as long as the request timeout
+        # allows. Measured: gemma-4-31b-it takes 25s to write its first token
+        # even for "say OK", so any impatience here disqualified it outright
+        # -- it was dropped, benched for five minutes, and every question
+        # after it went to a smaller model too. Only the stand-ins are hurried.
+        chosen = index == 0
         if tried:
             say(f"{holder['model']} is busy — asking {attempt['ai']['model']}…")
         holder["model"] = attempt["ai"]["model"]
         for chunk in llm.stream(messages, SYSTEM, int(settings["ai"].get("tokens_chat", 1200)),
-                                core._wide_context(attempt), "Chat", patient=attempt is candidates_[-1],
-                                first_by=None if attempt is candidates_[-1] else 15):
+                                core._wide_context(attempt), "Chat",
+                                patient=chosen or attempt is candidates_[-1],
+                                first_by=None if chosen or attempt is candidates_[-1] else patience):
             buf += chunk
             cut = buf.find(MARKER)
             safe = cut if cut >= 0 else max(sent, len(buf) - len(MARKER))  # hold back a possibly split marker
@@ -189,10 +204,21 @@ def answer(question: str, history: list[dict], settings: dict, holder: dict, sco
         if buf.strip():
             break
         tried.append(f"{attempt['ai']['model']}: {llm.friendly(llm.LAST_ERROR)}")
-        llm.bench(attempt["ai"]["model"])
+        # Benching sidelines a model for five minutes. A stand-in that fails
+        # deserves that; the model chosen in Settings does not, because then
+        # one slow question quietly hands the next five minutes of questions
+        # to something else without ever saying so.
+        if not chosen:
+            llm.bench(attempt["ai"]["model"])
         if not llm.is_transient(llm.LAST_ERROR):
             break  # a real error (bad key, bad request): another model will not fix it
-    holder["fallback"] = bool(tried) and bool(buf.strip())
+    # True whenever the answer did not come from the model in Settings --
+    # including when that model was benched by an earlier question and never
+    # even got a turn here. Judged on which model actually answered, not on
+    # what happened inside this call, because that is what the reader cares
+    # about: the app was quietly answering with a different model and saying
+    # nothing about it.
+    holder["fallback"] = bool(buf.strip()) and holder.get("model") != settings["ai"].get("model")
     cut = buf.find(MARKER)
     tail = buf[sent:cut] if cut >= 0 else buf[sent:]
     if tail:
