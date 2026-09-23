@@ -564,8 +564,12 @@ ROCE &gt; 20 AND Sales Growth &gt; 15 OR Sector = Banks</code></pre>
     <tr><th>Source</th><th>When it is included</th></tr>
     <tr><td><b>Your portfolio</b></td><td>When you ask about "my holdings", "which of my…", or anything without a company name. One row per stock: verdict, price, today's move, P/E, ROE, ROCE and growth.</td></tr>
     <tr><td><b>A saved analysis</b></td><td>For every company you name — its ratios, quarterly figures, strengths, risks and recent headlines, from the most recent run.</td></tr>
-    <tr><td><b>Filing passages</b></td><td>The best-matching pages from your downloaded concalls, presentations and annual reports.</td></tr>
+    <tr><td><b>Filing passages</b></td><td>The best-matching pages from your downloaded concalls, presentations and annual reports. When your words don't match the filing's — you say "capex", it says "capital expenditure" — the model supplies the wording that would, and searches again.</td></tr>
+    <tr><td><b>A whole-archive count</b></td><td>Only for questions asking <i>which</i> companies or <i>how many</i>. Counted across every indexed page rather than the handful read, so the answer is complete.</td></tr>
   </table>
+  <div class="note">
+    <b>Why the count matters.</b> The model reads six passages. Ask "which of my companies mentioned China?" when twenty-three of them did, and six passages can only ever produce a confident, wrong "six". The count comes straight from the database, so it is right regardless of what the model reads.
+  </div>
   <p>Name no company and ask a follow-up like "and its margins?" and it keeps the companies already under discussion, rather than starting again.</p>
 
   <h3>Asking</h3>
@@ -725,6 +729,7 @@ python -m streamlit run app.py</code></pre></div>
     <tr><td><b>Preload the charting library</b></td><td>About 30 MB to make the first chart instant instead of taking a few seconds.</td></tr>
     <tr><td><b>Price histories</b></td><td>The largest thing the app holds in memory — years of daily bars per company. Lower means less memory and more re-fetching.</td></tr>
     <tr><td><b>Latest quotes</b> / <b>Company searches</b></td><td>How many results are remembered before the app asks again.</td></tr>
+    <tr><td><b>Let Ask AI rank passages</b></td><td>The model picks which retrieved passages actually answer your question, instead of trusting the keyword order — "share capital" is not capital expenditure. One extra request per question: a few seconds locally, longer on a hosted provider.</td></tr>
     <tr><td><b>Re-analyse each held stock every…</b></td><td>How often background analysis runs. 0 analyses a stock once, when you add it, and never again.</td></tr>
     <tr><td><b>Filings downloaded at once</b></td><td>Faster, but heavier — and less polite to the site being read.</td></tr>
   </table>
