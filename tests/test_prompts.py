@@ -238,6 +238,38 @@ def check_guidance(s, rep):
             f"got {verdict['status']!r}: {(verdict['why'] or '')[:60]}", tokens2, secs2)
 
 
+def check_app_guidance(s, rep):
+    """The path the Research page actually calls: read the transcript out of
+    the archive, file the commitments, then grade them against the results.
+    llm.extract_guidance is covered above; this is the wiring around it."""
+    import core
+
+    archive.store_document("sha-guide", "STRONGCO", "Concall Transcript", "/tmp/g.pdf", [],
+                           [(3, TRANSCRIPT)])
+    result = {"ticker": "STRONGCO", "company_name": "Strong Compounders Ltd", "ok": True,
+              "quarterly_df": STRONG["quarterly"], "metrics": STRONG["metrics"]}
+    (res, secs) = timed(core.harvest_guidance, result, s)
+    saved, tokens = res
+    rep.add("app/guidance: files commitments from the archive", saved > 0, f"{saved} saved", tokens, secs)
+
+    filed = archive.claims_for("STRONGCO")
+    rep.add("app/guidance: commitments are readable back", bool(filed),
+            str([c.get("metric") for c in filed])[:90])
+
+    # Grading only looks at claims from an earlier quarter, so re-label them.
+    for claim in filed:
+        pf_conn = archive.connect()
+        with pf_conn as conn:
+            conn.execute("UPDATE guidance SET quarter='Q1 FY26' WHERE id=?", (claim["id"],))
+    (res2, secs2) = timed(core.check_guidance, result, s)
+    checked, tokens2 = res2
+    rep.add("app/guidance: grades what it filed", checked > 0, f"{checked} graded", tokens2, secs2)
+    graded = [c for c in archive.claims_for("STRONGCO") if c.get("status")]
+    rep.add("app/guidance: a grade is one of the three allowed words",
+            all(c["status"] in ("Delivered", "Missed", "Unclear") for c in graded),
+            str([c.get("status") for c in graded])[:90])
+
+
 def check_retrieval(s, rep):
     (res, secs) = timed(llm.expand_query, "what is the capex plan?", s)
     terms, tokens = res
@@ -273,6 +305,7 @@ def run(model: str) -> tuple[int, int]:
         jobs = [pool.submit(check_analyze, c, s, rep) for c in CASES]
         jobs += [pool.submit(check_news, f, s, rep) for f in (NEWS_BAD, NEWS_GOOD)]
         jobs.append(pool.submit(check_guidance, s, rep))
+        jobs.append(pool.submit(check_app_guidance, s, rep))
         jobs.append(pool.submit(check_retrieval, s, rep))
         for j in futures.as_completed(jobs):
             j.result()
@@ -323,6 +356,7 @@ def run_live() -> tuple[int, int]:
     for fixture in (NEWS_BAD, NEWS_GOOD):
         check_news(fixture, s, rep)
     check_guidance(s, rep)
+    check_app_guidance(s, rep)
     check_retrieval(s, rep)
     rep.rows.sort(key=lambda r: r[0])
     return rep.show()
