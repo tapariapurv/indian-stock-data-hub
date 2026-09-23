@@ -205,6 +205,26 @@ def check(label: str, s: dict) -> int:
        str([x["kind"] for x in hx.get("sources") or []]))
     ok("answers the capex question with the real figure", "1,200" in capex or "1200" in capex, capex[:150])
 
+    # With many candidates, the model picks which passages actually answer.
+    # The archive is padded with pages that repeat the question's words in
+    # another sense, which is exactly what ranking is for.
+    for n in range(12):
+        archive.store_document(
+            f"sha-noise-{n}", "ALPHAC", "Annual Report", "/tmp/noise.pdf", [],
+            [(100 + n, f"The authorised share capital of the Company stands at Rs {500 + n} crore, "
+                       f"divided into equity shares of Rs 10 each. Human capital remains our "
+                       f"greatest asset across {12 + n} locations.")])
+    started = time.time()
+    _, hr = ask("what is the capital expenditure plan?", s)
+    took = time.time() - started
+    ranked = hr.get("text") or ""
+    filings = [x for x in hr.get("sources") or [] if x["kind"] == "filing"]
+    ok("ranking keeps the answer to a few passages", 0 < len(filings) <= assistant.KEEP, str(len(filings)))
+    ok("ranking still finds the real capex passage",
+       any(x.get("page") == 8 for x in filings), str([x.get("page") for x in filings]))
+    ok("still answers with the figure after ranking", "1,200" in ranked or "1200" in ranked, ranked[:150])
+    print(f"        (that turn took {took:.0f}s, ranking {assistant.CANDIDATES} candidates)")
+
     # Nothing in the archive about this: it must say so rather than invent.
     _, hn = ask("What did ALPHAC say about its Antarctic division?", s)
     none = (hn.get("text") or "").lower()

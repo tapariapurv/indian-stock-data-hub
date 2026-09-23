@@ -27,6 +27,9 @@ How to answer:
 - Finish with exactly one final line: FOLLOWUPS: <question> | <question> | <question>
   (three short follow-up questions the user might ask next, about these companies)."""
 MARKER = "FOLLOWUPS:"
+KEEP = 6              # passages the model finally reads
+CANDIDATES = 20       # passages retrieved before any ranking
+RERANK_ABOVE = 10     # ask the model to choose only when there is a real choice
 PORTFOLIO_WORDS = re.compile(r"\b(my|portfolio|holdings?|i own|we own|which of|all of)\b", re.I)
 REFERS_BACK = re.compile(r"\b(it|its|it's|they|their|them|this|that|these|those|both|compare|compared|vs|versus|same)\b", re.I)
 
@@ -120,7 +123,7 @@ def build_context(question: str, history: list[dict], scope: list[str] | None = 
     if use_filings:
         terms = [w for w in re.findall(r"[a-z0-9][a-z0-9'&.-]*", question.lower())
                  if len(w) > 2 and w not in archive.STOPWORDS]
-        hits = archive.search(question, tickers or None, limit=6)
+        hits = archive.search(question, tickers or None, limit=CANDIDATES)
         # The gap between a question and a filing is vocabulary, not logic:
         # ask about "capex" and the transcript says "capital expenditure", so
         # a plain keyword search finds nothing at all. The Archive page has
@@ -131,10 +134,17 @@ def build_context(question: str, history: list[dict], scope: list[str] | None = 
         if len(hits) < 3 and settings and len(question.split()) > 2 and core.ai_signature(settings)[0]:
             extra, _ = llm.expand_query(question, core._wide_context(settings))
             if extra:
-                found = archive.search(question, tickers or None, limit=6, extra_terms=extra)
+                found = archive.search(question, tickers or None, limit=CANDIDATES, extra_terms=extra)
                 seen = {(h["ticker"], h["page"], h["category"]) for h in hits}
                 hits += [h for h in found if (h["ticker"], h["page"], h["category"]) not in seen]
-        for hit in hits[:6]:
+        # With plenty of candidates, let the model throw out the coincidental
+        # matches -- the page that says "share capital" when the question was
+        # about capital expenditure. Only worth a call when there is real
+        # choice to make, so a small archive still answers in one request.
+        if len(hits) > RERANK_ABOVE and settings and core.ai_signature(settings)[0]:
+            order, _ = llm.rerank_passages(question, hits, core._wide_context(settings), keep=KEEP)
+            hits = [hits[i] for i in order] or hits
+        for hit in hits[:KEEP]:
             add("filing", f"{hit['ticker']} · {hit['category']} · page {hit['page']}",
                 core._focus(hit["text"], terms + extra), ticker=hit["ticker"], page=hit["page"],
                 path=hit.get("path"))

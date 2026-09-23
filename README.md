@@ -20,7 +20,7 @@ Everything it downloads stays on your machine: filings are parsed once, searchab
 Plenty of sites show you a company's numbers. These three things come from the app keeping its own archive:
 
 - **Promise vs delivery.** Every quarter management commits to something on the earnings call — margins, growth, capex. The app pulls those commitments out of the transcript, files them, and grades them against the numbers actually reported later. Over eight quarters you get something no screener will tell you: how often this management does what it says.
-- **Ask your own filings, in plain English.** Every transcript, presentation and annual report you download is indexed, and the search actually reasons: the model first suggests the vocabulary a filing would really use (ask about "capex" and it adds *capital expenditure*, *expansion plans*, *growth strategy*), the database retrieves, the model discards the coincidental matches, then answers from what's left with citations. Asked about capex on a real Reliance archive it came back with ₹39,000 crore, cited from both the transcript and the annual report — in six seconds, offline.
+- **Ask your own filings, in plain English.** Every transcript, presentation and annual report you download is indexed, and **Ask AI** reasons over it: when your words don't match the filing's, the model supplies the ones that would (ask about "capex" and it adds *capital expenditure*, *capital allocation*), the database retrieves, the model throws out the coincidental matches — "share capital" is not capital expenditure — and answers from what's left, citing every figure. It sees your portfolio and your saved analyses too, so "which of my holdings looks weakest?" is a fair question.
 - **What changed since last time.** Each analysis is saved. Run a company again and the app lists what moved: ratios, strengths and risks, new filings, new headlines, a changed verdict. Plain comparison, no model, so nothing is invented.
 
 ## Features
@@ -248,6 +248,7 @@ Set any limit to 0 to keep it forever. The clear-out runs at startup, on demand,
     ├── test_portfolio.py   # FIFO gains, XIRR, the P/E band, cache keys
     ├── test_screener.py    # query parsing and the guidance score
     ├── test_runtime.py     # memory reporting and the autostart files
+    ├── test_ask.py         # the Ask AI chat end to end (needs Ollama)
     ├── test_prompts.py     # scores the prompts against a real model (needs Ollama)
     └── test_app_smoke.py   # every page and tab renders
 ```
@@ -270,11 +271,14 @@ One more is opt-in, because it needs a model running locally:
 
 ```bash
 python tests/test_prompts.py --all      # every installed Ollama model
+python tests/test_ask.py                # the Ask AI chat, end to end
 ```
+
+Both take `--live` to run against the provider you have configured instead, which spends real money on a paid key. `test_ask.py --context` checks the retrieval without needing any model at all.
 
 `test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it renders every page and tab, and checks the Trades page agrees with the maths.
 
-`test_prompts.py` is different: it scores the prompts against a real model rather than asserting the code ran. It is how the verdict, sentiment and guidance-grading bugs were found. It runs on local Ollama only and redirects the database, so it never touches your archive or spend ledger; `--live` opts in to the provider you have configured and will spend real money on a paid key.
+`test_ask.py` drives the whole Ask AI chat: that what is streamed matches what is stored, that the follow-up marker never reaches the screen, that it cites only sources that exist, that scope and the filings toggle work, and that it says so rather than inventing when the archive has nothing. `test_prompts.py` is different: it scores the prompts against a real model rather than asserting the code ran. It is how the verdict, sentiment and guidance-grading bugs were found. It runs on local Ollama only and redirects the database, so it never touches your archive or spend ledger; `--live` opts in to the provider you have configured and will spend real money on a paid key.
 
 ## Troubleshooting
 
