@@ -33,6 +33,9 @@ Plenty of sites show you a company's numbers. These three things come from the a
 - **Recent news:** headlines from Google News, Bing News, Economic Times, Livemint, Business Standard and Hindu BusinessLine, filtered to the company, spam removed and duplicates merged.
 - **Your choice of model:** Ollama locally, or Anthropic, OpenAI, Google, OpenRouter and any OpenAI-compatible server. Keys live in your settings file or in environment variables.
 - **Batch analysis:** upload a CSV or Excel watchlist and analyse the whole list in one run.
+- **Your actual trades:** log buys and sells and the app works out what you still hold, the average cost of it, realised gains matched first-in first-out, the short/long term split at twelve months, and a money-weighted return (XIRR). It deliberately stops short of computing tax owed — rates change, and a stale rate table is worse than none.
+- **Valuation in context:** a company's P/E against its own five-year range, so "P/E 43" becomes "43, and the 42nd percentile of its own history".
+- **Light enough to leave running:** under 250 MB with every page open, under 200 MB in lean mode. A Performance tab shows what it is using, and every cache, the background refresher and the chart preloading can be turned down or off. It can start itself when you log in, on macOS, Windows and Linux.
 - **Saved history:** reopen any past analysis, chart a ratio across months, and control exactly how long anything is kept. Every saved run lists the filings behind it — the file on disk, the pages its figures came from, and a link to the original — and each metric carries the exact pages it appeared on.
 - **Reports:** an Excel workbook (overview dashboard with live formulas, a sheet per company with a chart, an **All numbers** sheet and every figure in a filterable table) and an A4 Word report with clickable links.
 - **Token-frugal:** the model sees only clean, structured data, replies are length-capped, and answers are cached — re-running costs nothing, and every run reports exactly how many tokens it used.
@@ -161,14 +164,19 @@ flowchart LR
 - **Extraction:** pure code, no AI. Every number in each PDF is captured with its page and surrounding text, then labelled and categorised by keyword rules. Results are keyed by file hash in the archive, so a filing is parsed **once, ever** — however many times you re-analyse it.
 - **AI:** one call per company for the verdict and analysis (≈400 tokens), one for the news digest (≈300), one only if a ticker fails (≈100). Reading a transcript or answering an archive question happens only when you ask for it; an archive question costs three calls (expand, re-rank, answer) and around 2,800 tokens. The model gets structured data, headlines and retrieved passages — never the noisy raw PDF numbers.
 
-## The four pages
+## The pages
 
 | Page | What it's for |
 |---|---|
+| **Portfolio** | Accounts, live value and P&L, allocation limits, alerts, the weekly digest — and **Trades**, where realised gains and a money-weighted return come from what you actually bought and sold. |
+| **Stock** | One company: candlestick chart, upcoming events, its P/E against its own five-year range, and every analysis ever saved for it. |
+| **Screener** | Filter every analysed company with a screener.in-style query, including how often its management kept its word. |
+| **Compare** | Put analysed companies side by side. |
 | **Research** | Run an analysis; read it across Overview, Financials, All numbers, What changed, Guidance and Filings. |
+| **Ask AI** | A chat window over everything the app has saved. |
 | **Archive** | Ask a question across every filing you've downloaded: the model expands the wording, ranks what's found and answers with citations — offline. |
 | **History** | Reopen any saved analysis and chart a ratio over months. |
-| **Settings** | Models and keys, scraping limits, appearance, and what gets kept for how long. |
+| **Settings** | Models and keys, scraping limits, appearance, what gets kept, and how heavy the app is allowed to be. |
 
 ## Configuration
 
@@ -180,6 +188,7 @@ Almost everything is set from **Settings** inside the app and stored in `setting
 | Data & scraping | Default tickers and filing types, size and page limits, parallel downloads, politeness delay, news window, feature switches |
 | Appearance | Accent colour, text size, spacing, chart colours, table height, decimals, sparklines, which tabs appear and in what order |
 | Storage & history | How long to keep saved analyses, filing PDFs and searchable text; per-company caps; automatic clear-out |
+| Performance | Background work on/off, chart preloading, cache sizes, refresh interval, parallel downloads, lean mode, start at login |
 
 A few things are still set at launch:
 
@@ -208,24 +217,38 @@ Set any limit to 0 to keep it forever. The clear-out runs at startup, on demand,
 ├── core.py                 # scraping, downloads, PDF extraction, news, correlation
 ├── llm.py                  # every model provider behind one interface
 ├── archive.py              # local SQLite: extraction cache, search, history, guidance
+├── portfolio.py            # accounts, holdings, trades, prices, background refresher
+├── alerts.py               # the inbox, notifications and the weekly digest
+├── screener.py             # queries over every analysed company
+├── assistant.py            # the Ask AI chat
 ├── exports.py              # Excel and Word report builders
 ├── settings.py             # defaults, settings file, appearance
+├── runtime.py              # memory reporting and starting with the computer
 ├── ui.py                   # shared rendering (company card, tables)
 ├── app_pages/
+│   ├── portfolio_page.py   # accounts, holdings, trades, allocation, alerts, digest
+│   ├── stock.py            # one company: chart, events, P/E band, saved analyses
+│   ├── screener_page.py    # filter every analysed company
+│   ├── compare.py          # companies side by side
 │   ├── research.py         # run an analysis and read it
+│   ├── ask.py              # chat over everything saved
 │   ├── archive_search.py   # search every downloaded filing
 │   ├── history.py          # past analyses
 │   └── settings_page.py    # all settings
 ├── requirements.txt
 ├── .streamlit/config.toml  # base theme + static file serving (for the guide link)
-├── static/user_guide.pdf   # 23-page user guide, opened from the sidebar
+├── static/user_guide.pdf   # illustrated user guide, opened from the sidebar
 ├── docs/
 │   ├── user_guide.html     # source of the PDF guide (rebuild steps inside)
 │   └── images/             # screenshots
 └── tests/
     ├── test_exports.py     # Excel/Word files are valid and injection-safe
-    ├── test_archive.py     # cache, search, history, retention, watchlists
+    ├── test_archive.py     # cache, search, history, retention, watchlists, lazy PDF parsing
     ├── test_providers.py   # every provider, spend tracking and budget limits
+    ├── test_portfolio.py   # FIFO gains, XIRR, the P/E band, cache keys
+    ├── test_screener.py    # query parsing and the guidance score
+    ├── test_runtime.py     # memory reporting and the autostart files
+    ├── test_prompts.py     # scores the prompts against a real model (needs Ollama)
     └── test_app_smoke.py   # every page and tab renders
 ```
 
@@ -237,10 +260,21 @@ No test framework needed, and no network, model or API key either:
 python tests/test_exports.py
 python tests/test_archive.py
 python tests/test_providers.py
+python tests/test_portfolio.py
+python tests/test_screener.py
+python tests/test_runtime.py
 python tests/test_app_smoke.py
 ```
 
-`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_app_smoke.py` runs the real app headlessly and renders every page and tab.
+One more is opt-in, because it needs a model running locally:
+
+```bash
+python tests/test_prompts.py --all      # every installed Ollama model
+```
+
+`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it renders every page and tab, and checks the Trades page agrees with the maths.
+
+`test_prompts.py` is different: it scores the prompts against a real model rather than asserting the code ran. It is how the verdict, sentiment and guidance-grading bugs were found. It runs on local Ollama only and redirects the database, so it never touches your archive or spend ledger; `--live` opts in to the provider you have configured and will spend real money on a paid key.
 
 ## Troubleshooting
 
@@ -255,7 +289,7 @@ python tests/test_app_smoke.py
 | Stale numbers | Results are cached for an hour: **Settings → Clear cached results**. |
 | Guidance tab says no transcript | Tick **Concall Transcript** in the sidebar and run the analysis again. |
 
-More answers are in chapter 16 of the [user guide](static/user_guide.pdf).
+More answers are in chapter 18 of the [user guide](static/user_guide.pdf).
 
 ## Disclaimer
 

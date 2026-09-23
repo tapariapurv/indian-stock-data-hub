@@ -96,15 +96,17 @@
     <div><span>8</span>All the numbers, in one place</div>
     <div><span>9</span>What changed since last time</div>
     <div><span>10</span>What management promised</div>
-    <div><span>11</span>Searching everything you have downloaded</div>
-    <div><span>12</span>Excel and Word reports</div>
-    <div><span>13</span>Finding ticker symbols</div>
-    <div><span>14</span>Privacy and how the AI is used</div>
-    <div><span>15</span>The Settings page</div>
-    <div><span>16</span>Troubleshooting</div>
-    <div><span>17</span>Glossary</div>
+    <div><span>11</span>Your portfolio, and your trades</div>
+    <div><span>12</span>Searching everything you have downloaded</div>
+    <div><span>13</span>Excel and Word reports</div>
+    <div><span>14</span>Finding ticker symbols</div>
+    <div><span>15</span>Privacy and how the AI is used</div>
+    <div><span>16</span>The Settings page</div>
+    <div><span>17</span>Keeping it light, and starting it automatically</div>
+    <div><span>18</span>Troubleshooting</div>
+    <div><span>19</span>Glossary</div>
   </div>
-  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 14.</div>
+  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 15.</div>
 </section>
 
 <!-- ============================ 1 ============================ -->
@@ -300,7 +302,7 @@ source .venv/bin/activate</code></pre></div>
   <figure><img src="images/overview.jpg" alt="The app after an analysis" style="max-height:76mm; width:auto; margin:0 auto"><figcaption>The app after analysing three companies: sidebar on the left, summary tiles and export buttons at the top, one card per company below.</figcaption></figure>
   <table>
     <tr><th style="width:26%">Sidebar control</th><th>What it does</th></tr>
-    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 13 shows how to find them. Start with 1 to 5 companies.</td></tr>
+    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 14 shows how to find them. Start with 1 to 5 companies.</td></tr>
     <tr><td><strong>Filings to download</strong></td><td>Click to turn each filing type on or off: concall transcripts, investor presentations, annual reports and quarterly results. Fewer types means a faster run.</td></tr>
     <tr><td><strong>Timeframe</strong></td><td>How many of each filing to fetch: latest only (fastest), the last 2 or 4, or all available.</td></tr>
     <tr><td><strong>Local AI switch</strong></td><td>Turns the AI verdicts, analyses and news digests on or off. Greyed out if Ollama isn't running.</td></tr>
@@ -320,12 +322,24 @@ source .venv/bin/activate</code></pre></div>
   <h3>Overview: one card per company</h3>
   <figure><img src="images/company-and-news.jpg" alt="A company card with news"><figcaption>A company card: the AI analysis, key ratios, strengths and risks, and recent news with its AI digest.</figcaption></figure>
   <ul>
-    <li><strong>AI verdict</strong> (green Positive, amber Neutral, red Cautious) and a 3-sentence analysis. The line under it names the model that wrote it and how many tokens it used.</li>
+    <li><strong>AI verdict</strong> (green Positive, amber Neutral, red Cautious) and a short analysis. The line under it names the model that wrote it and how many tokens it used.</li>
     <li><strong>Key ratios</strong> as shown on screener.in. See the glossary for what each one means.</li>
     <li><strong>Strengths and risks</strong>: screener.in's automatic pros and cons.</li>
-    <li><strong>Recent news</strong>: up to 8 headlines from the last 14 days, a 2-sentence AI digest, and an overall sentiment (Positive, Mixed or Negative). Click a headline to read the article.</li>
+    <li><strong>Recent news</strong>: up to 8 headlines from the last 14 days, a short AI digest, and an overall sentiment (Positive, Mixed or Negative). Click a headline to read the article.</li>
     <li><strong>Figures extracted from filings</strong>: click to open a searchable table of every number found in the downloaded PDFs, with its page and the sentence it came from. These are found by pattern matching, so check the context before relying on one.</li>
   </ul>
+
+  <h3>Where the verdict comes from</h3>
+  <p>The one-word verdict is <em>not</em> the model's opinion. It is worked out by the app, from the ratios, using three rules applied in order:</p>
+  <table>
+    <tr><th>Verdict</th><th>When</th></tr>
+    <tr><td><strong>Cautious</strong></td><td>Return on equity below 12%, <em>or</em> debt to equity above 1.5, <em>or</em> net profit fell between the two quarters shown.</td></tr>
+    <tr><td><strong>Positive</strong></td><td>Return on equity above 18% <em>and</em> net profit rose between the two quarters shown.</td></tr>
+    <tr><td><strong>Neutral</strong></td><td>Everything else.</td></tr>
+  </table>
+  <p>The model is told the verdict and asked only to explain it in plain English, quoting the figures behind it. This is deliberate: small local models are poor at comparing numbers — one we tested called a 7.6% return on equity a "strong position" every single time — but good at writing a sentence about figures they have been handed. Doing the arithmetic in code makes the badge identical whichever model you use, and costs nothing.</p>
+  <p>Where the ratios needed are missing, there is no rule to apply and the model is asked for the verdict after all.</p>
+  <div class="note warn"><strong>They are rules of thumb, not a valuation.</strong> A good company can be Cautious for a quarter, and a weak one Neutral. They exist so the badge means the same thing every time — read the analysis and the numbers, not just the colour.</div>
 
   <h3>Financials: trends at a glance</h3>
   <figure><img src="images/financials.jpg" alt="The Financials tab"><figcaption>The Financials tab: latest-quarter figures with their change from the previous quarter, a sales-versus-profit chart, and the full results table.</figcaption></figure>
@@ -415,11 +429,49 @@ source .venv/bin/activate</code></pre></div>
 
   <h3>Checking it later</h3>
   <p>Once a later quarter has been reported, press <strong>Check against results</strong>. Each commitment from an earlier quarter is graded <span class="tag">Delivered</span>, <span class="tag">Missed</span> or <span class="tag">Unclear</span> against the numbers the app has actually scraped — never against anything the model remembers. The <strong>Delivered</strong> counter at the top is the useful number: it tells you, over time, how often this management does what it says it will.</p>
+
   <p>Treat a single grade as a prompt to go and read the transcript yourself, not as a verdict. Treat a pattern across eight quarters as worth knowing.</p>
 </section>
 
+<!-- ============================ PORTFOLIO ============================ -->
 <section class="chapter">
   <div class="kicker">Chapter 11</div>
+  <h2>Your portfolio, and your trades</h2>
+  <p class="intro">The Research page answers "what is this company like?". The Portfolio page answers "what do I own, what is it worth, and how have I actually done?" — and it keeps working in the background while you get on with something else.</p>
+
+  <h3>Accounts and holdings</h3>
+  <p>A portfolio is made of <b>accounts</b> — call them what you like: <i>Long term</i>, <i>Trading</i>, <i>Mum's</i>. Search any NSE or BSE listed company and add it to one. Quantity and buy price are optional: leave them blank and the app is a watchlist; fill them in and it shows value, profit and loss, and how much of your money sits in any one stock or sector.</p>
+  <p>Adding a stock queues its first full analysis in the background — the same scrape, filings and verdict the Research page produces. You do not have to wait for it.</p>
+  <div class="note">
+    <b>Nothing leaves your computer.</b> Accounts, quantities and buy prices live in <code>~/.stock-data-hub</code>, outside the app folder, so updating the app never touches them. Prices are looked up by ticker symbol alone.
+  </div>
+
+  <h3>Trades: what you actually bought and sold</h3>
+  <p>A quantity and an average price are a snapshot. They cannot tell you what you made on the shares you already sold, or what your money actually earned. The <b>Trades</b> section fixes that: record each buy and sell — date, quantity, price, and any brokerage — and the app works the rest out.</p>
+  <ul>
+    <li><b>What you still hold</b> and its average cost, recalculated from your trades. You no longer type these in; they are derived.</li>
+    <li><b>Realised gains</b>, matched <b>first-in first-out</b> — the oldest shares are treated as sold first, which is the basis Indian equity taxation uses. Charges are counted inside the cost of a buy and taken off the proceeds of a sell, so a round trip eaten entirely by brokerage correctly shows as no profit.</li>
+    <li><b>Short term or long term</b>, split at the twelve-month line, and totalled per financial year (April to March).</li>
+    <li><b>A money-weighted return (XIRR)</b> — what your money earned given <i>when</i> you put it in and took it out. Two people can own the same stock and earn very different returns depending on when they bought; this is the number that shows it.</li>
+  </ul>
+  <div class="note warn">
+    <b>This is a record of your trades, not tax advice.</b> The app splits short from long term and totals each, but deliberately does not calculate tax owed: rates, surcharges and exemptions change, and a stale rate built into an app is worse than none at all. Take the figures to whoever does your return.
+  </div>
+  <p>A stock with no trades recorded keeps whatever quantity and price you typed in, so nothing changes until you choose to use this. If you sell more shares than the app has purchases for, it says so rather than inventing a cost.</p>
+
+  <h3>Allocation, alerts and the weekly digest</h3>
+  <p><b>Allocation</b> shows where your money actually sits, by sector and by company size, and warns when one stock or one sector grows past the limits you set in Settings. <b>Alerts</b> collects changed verdicts, new filings, missed guidance and your own price alerts into an inbox, and can send them as a notification or an email. <b>Digest</b> is the weekly summary of all of it.</p>
+
+  <h3>The Stock page</h3>
+  <p>Clicking any holding opens its own page: a candlestick chart with 50- and 200-day averages, upcoming results and dividend dates, every analysis ever saved for it, and one line that is hard to get anywhere else — <b>today's P/E against the company's own five-year range</b>.</p>
+  <p>A P/E on its own says very little; 43 is cheap for one business and dear for another. Against its own history it starts to mean something: "43, and the 42nd percentile of its own five-year range" says this company has usually been more expensive than it is today. The app shows the low, median and high alongside it.</p>
+  <div class="note">
+    <b>Read it as a question, not an answer.</b> It compares a company only with its own past, never with its peers, and a company can be re-rated for perfectly good reasons — or stay cheap for perfectly bad ones. A loss-making period has no meaningful P/E, so nothing is shown at all.
+  </div>
+</section>
+
+<section class="chapter">
+  <div class="kicker">Chapter 12</div>
   <h2>Searching everything you have downloaded</h2>
   <p class="intro">Every filing the app downloads stays on your machine and stays searchable — across companies, with no network and no cost per search.</p>
 
@@ -440,7 +492,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 7 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 12</div>
+  <div class="kicker">Chapter 13</div>
   <h2>Excel and Word reports</h2>
   <p class="intro">The <strong>Excel workbook</strong> and <strong>Word report</strong> buttons appear above the tabs after a run. Both contain everything from that run.</p>
   <div class="grid2">
@@ -467,7 +519,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 8 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 13</div>
+  <div class="kicker">Chapter 14</div>
   <h2>Finding ticker symbols</h2>
   <p class="intro">The app uses the symbol from the company's page address on screener.in, which is usually its NSE symbol.</p>
   <ol>
@@ -486,7 +538,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 9 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 14</div>
+  <div class="kicker">Chapter 15</div>
   <h2>Privacy and how the AI is used</h2>
   <p class="intro">The AI runs on your computer through Ollama. None of your data is sent to an AI company.</p>
   <h3>What leaves your computer</h3>
@@ -506,7 +558,7 @@ source .venv/bin/activate</code></pre></div>
 
 <!-- ============================ 10 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 15</div>
+  <div class="kicker">Chapter 16</div>
   <h2>The Settings page</h2>
   <p class="intro">Almost everything about the app can be changed from inside it. Your choices are stored in <code>settings.json</code> next to the app, and nothing here can break it permanently — there is a Reset button at the bottom of the last tab.</p>
 
@@ -531,6 +583,9 @@ source .venv/bin/activate</code></pre></div>
   <h3>Appearance</h3>
   <p>Accent colour, text size, spacing, chart colours, table height, decimal places, whether metrics show sparklines, and which tabs appear on the research page and in what order. You can also rewrite the subtitle under the app's title. If anything ever looks wrong, switch off <strong>Apply my appearance settings</strong> and the app falls straight back to its built-in theme.</p>
 
+  <h3>Performance</h3>
+  <p>How much memory the app is using right now, and every switch that changes it: lean mode, background work, chart preloading, cache sizes and how often held stocks are re-analysed. It is also where you turn on starting the app when you log in. Chapter 17 covers all of it.</p>
+
   <h3>Storage &amp; history</h3>
   <p>This is where you decide how long the app remembers things. Each limit can be set to 0, which means keep forever.</p>
   <table>
@@ -553,9 +608,48 @@ python -m streamlit run app.py</code></pre></div>
   </div>
 </section>
 
+<!-- ============================ PERFORMANCE ============================ -->
+<section class="chapter">
+  <div class="kicker">Chapter 17</div>
+  <h2>Keeping it light, and starting it automatically</h2>
+  <p class="intro">This app is meant to sit in the background — watching prices, re-analysing what you hold, building a digest once a week. So it is built to be something you can forget about: comfortably under 500 MB of memory, and entirely under your control.</p>
+
+  <h3>What it actually uses</h3>
+  <p><b>Settings → Performance</b> shows the memory this session is using, right now, and warns you if it goes past 500 MB. For reference, with every page opened it sits around 230 MB, and about 190 MB in lean mode. Most of that is Python itself plus the two libraries the app is built on; the app's own data is a small fraction.</p>
+
+  <h3>The switches</h3>
+  <table>
+    <tr><th>Setting</th><th>What it trades</th></tr>
+    <tr><td><b>Lean mode</b></td><td>One switch for a light footprint: no chart preloading, small caches. The first chart you open takes a few seconds longer.</td></tr>
+    <tr><td><b>Keep working in the background</b></td><td>Off, the app does nothing unless you open a page and ask. No re-analysis, no price alerts, no weekly digest.</td></tr>
+    <tr><td><b>Preload the charting library</b></td><td>About 30 MB to make the first chart instant instead of taking a few seconds.</td></tr>
+    <tr><td><b>Price histories</b></td><td>The largest thing the app holds in memory — years of daily bars per company. Lower means less memory and more re-fetching.</td></tr>
+    <tr><td><b>Latest quotes</b> / <b>Company searches</b></td><td>How many results are remembered before the app asks again.</td></tr>
+    <tr><td><b>Re-analyse each held stock every…</b></td><td>How often background analysis runs. 0 analyses a stock once, when you add it, and never again.</td></tr>
+    <tr><td><b>Filings downloaded at once</b></td><td>Faster, but heavier — and less polite to the site being read.</td></tr>
+  </table>
+  <p>The cache sizes take effect when the app restarts. <b>Free memory now</b> drops everything held in memory immediately; nothing is lost, it is simply fetched or recomputed next time it is needed.</p>
+  <div class="note good">
+    <b>The app is already careful about the expensive things.</b> A filing is parsed once ever and the result cached by file hash. The PDF reader — about 22 MB — is only loaded when a PDF is actually opened, so a session that never runs an analysis never pays for it. Model answers are cached, so re-running a company costs nothing.
+  </div>
+
+  <h3>Starting when you log in</h3>
+  <p>At the bottom of the same tab, <b>Start when I log in</b> makes the app launch quietly in the background whenever you sign in to your computer, so alerts and the weekly digest keep arriving without you starting anything.</p>
+  <table>
+    <tr><th>Your system</th><th>What gets written</th></tr>
+    <tr><td>macOS</td><td>A LaunchAgent in <code>~/Library/LaunchAgents</code>, at background priority so it never steals focus, and restarted if it ever crashes.</td></tr>
+    <tr><td>Windows</td><td>A small script in your Startup folder that launches the app minimised.</td></tr>
+    <tr><td>Linux</td><td>A <code>.desktop</code> entry in <code>~/.config/autostart</code>.</td></tr>
+  </table>
+  <p>It is exactly one file, in the place your operating system documents for it, and switching the toggle off deletes it again. There is no installer and no background service left behind. Once it is running, open <a href="http://localhost:8501">http://localhost:8501</a> in a browser whenever you want to look at it.</p>
+  <div class="note">
+    <b>It uses the same Python you installed the app with</b>, so a virtual environment keeps working after a reboot. If you move the app folder, switch the toggle off and on again so it points at the new location.
+  </div>
+</section>
+
 <!-- ============================ 11 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 16</div>
+  <div class="kicker">Chapter 18</div>
   <h2>Troubleshooting</h2>
   <p class="intro">Find what you see in the left column.</p>
   <h3>Installing and starting</h3>
@@ -570,7 +664,7 @@ python -m streamlit run app.py</code></pre></div>
   <h3>Running an analysis</h3>
   <table>
     <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 13). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
+    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 14). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
     <tr><td>A filing says <em>Skipped</em></td><td>It was over 25 MB, or the link led to a web page rather than a PDF. The rest of the analysis is unaffected.</td></tr>
     <tr><td>"No news in the last 14 days"</td><td>Normal for smaller companies. The news sources simply had nothing that named the company.</td></tr>
     <tr><td>Numbers look out of date</td><td>Results are reused for an hour. Use <strong>⋮ → Clear cache</strong>, then run again.</td></tr>
@@ -594,7 +688,7 @@ python -m streamlit run app.py</code></pre></div>
 
 <!-- ============================ 12 ============================ -->
 <section class="chapter">
-  <div class="kicker">Chapter 17</div>
+  <div class="kicker">Chapter 19</div>
   <h2>Glossary</h2>
   <p class="intro">The terms you'll meet in the app, in plain language.</p>
   <dl>
