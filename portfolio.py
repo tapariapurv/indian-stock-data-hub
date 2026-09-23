@@ -49,10 +49,23 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # Also in settings.DEFAULTS; repeated here so a server started before this
 # feature existed (holding the old settings module) still works.
 DEFAULTS = {"refresh_hours": 24, "track_positions": True, "max_stock_pct": 20, "max_sector_pct": 35}
+PERF_DEFAULTS = {"background_refresh": True, "warm_charts": True, "chart_cache": 8,
+                 "quote_cache": 200, "search_cache": 500}
 
 
 def prefs(settings: dict) -> dict:
     return {**DEFAULTS, **settings.get("portfolio", {})}
+
+
+def perf(settings: dict | None = None) -> dict:
+    return {**PERF_DEFAULTS, **((settings or cfg.load()).get("performance") or {})}
+
+
+# How many of each thing to keep in memory. Read once, at import, because a
+# cache's size is fixed when its decorator runs -- the Settings page says
+# these take effect when the app restarts, and offers a "clear caches" button
+# that works straight away.
+_PERF = perf()
 
 
 def _q(sql: str, params=()) -> list[dict]:
@@ -354,7 +367,7 @@ def import_file(uploaded, default_account: int) -> tuple[int, list[str]]:
 
 # --- Search & prices ---------------------------------------------------------
 
-@st.cache_data(ttl=86400, max_entries=2000, show_spinner=False)
+@st.cache_data(ttl=86400, max_entries=_PERF["search_cache"], show_spinner=False)
 def search(query: str) -> list[dict]:
     """Every NSE and BSE listing screener.in knows, by name or symbol.
 
@@ -506,7 +519,7 @@ def quotes(stocks: tuple[tuple[str, int | None], ...]) -> dict[str, dict]:
     return _quotes(stocks, _price_slot())
 
 
-@st.cache_data(ttl=86400, max_entries=200, show_spinner=False)
+@st.cache_data(ttl=86400, max_entries=_PERF["quote_cache"], show_spinner=False)
 def _quotes(stocks: tuple[tuple[str, int | None], ...], slot: str) -> dict[str, dict]:
     """ticker -> {price, change, change_pct, spark}; one Yahoo request for them all.
     spark is the last month of closes, for the card sparklines."""
@@ -534,7 +547,7 @@ def _quotes(stocks: tuple[tuple[str, int | None], ...], slot: str) -> dict[str, 
 PERIOD_DAYS = {"1M": 31, "6M": 183, "1Y": 366, "5Y": 1830, "Max": 10000}
 
 
-@st.cache_data(ttl=900, max_entries=20, show_spinner=False)  # years of daily bars each
+@st.cache_data(ttl=900, max_entries=_PERF["chart_cache"], show_spinner=False)  # years of daily bars each
 def history(ticker: str, screener_id, period: str) -> pd.DataFrame | None:
     """Daily OHLCV for the chart, with a year of warm-up so the 200-day line starts on screen."""
     import yfinance as yf
@@ -712,7 +725,10 @@ def _current() -> bool:
 def _loop() -> None:
     # Heavy first imports (yfinance ~2 s, altair ~5 s for the first chart) are
     # paid here in the background at server start, not by whoever opens a page.
-    import altair, yfinance  # noqa: F401, E401
+    # Altair alone is ~30 MB resident, so it is a choice: off, the first chart
+    # takes a few seconds and the app idles lighter.
+    if perf().get("warm_charts", True):
+        import altair, yfinance  # noqa: F401, E401
     while _current():
         try:
             s = cfg.load()
@@ -742,10 +758,15 @@ def _loop() -> None:
 _start_lock = threading.Lock()
 
 
-def start_refresher() -> threading.Thread:
+def start_refresher() -> threading.Thread | None:
     """One live refresher per server process, however many tabs are open.
     Checked on every rerun: after a code reload the old thread exits, and
-    this starts the new module's own (a cached handle would stay dead)."""
+    this starts the new module's own (a cached handle would stay dead).
+
+    Returns None when background work is switched off in Settings, in which
+    case nothing is analysed unless you ask for it on a page."""
+    if not perf().get("background_refresh", True):
+        return None
     with _start_lock:
         for t in threading.enumerate():
             if t.name == "portfolio-refresh" and getattr(t, "owner", None) is _THIS and t.is_alive():

@@ -148,4 +148,25 @@ print("ok: coverage counts the whole archive and passages show the matching part
 
 print("ok: natural-language retrieval works with and without a model")
 
+# --- pdfplumber is loaded only when a PDF is actually opened -----------------
+# It costs ~22 MB resident, and most sessions never parse one. The flag has
+# to be right without paying that, and the real import has to still happen.
+assert core.PDFPLUMBER_AVAILABLE, "pdfplumber is installed, so the flag must say so"
+assert "pdfplumber" not in sys.modules, "importing core must not pull pdfplumber in"
+
+guide = ROOT / "static" / "user_guide.pdf"
+if guide.exists():
+    import logging
+
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)  # font warnings on this PDF are noise
+    read_pages = []
+    figures_found = core.extract_all_numbers(guide, "Annual Report", pages_out=read_pages)
+    assert "pdfplumber" in sys.modules, "opening a PDF must import it"
+    assert len(read_pages) > 5, f"only {len(read_pages)} pages read"
+    assert figures_found, "no figures extracted from a document full of numbers"
+    print(f"ok: pdfplumber loads only on demand, then reads {len(read_pages)} pages "
+          f"and {len(figures_found)} figures")
+else:
+    print("ok: pdfplumber stays unimported (no sample PDF to parse)")
+
 tmp.cleanup()

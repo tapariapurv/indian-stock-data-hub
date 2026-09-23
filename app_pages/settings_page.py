@@ -22,10 +22,10 @@ st.markdown(":gray[Everything here is stored in `settings.json` next to the app.
             "owner-only permissions, and an environment variable always wins over a saved key — so on a "
             "shared machine you need never write one down.]")
 
-tab_ai, tab_spend, tab_note, tab_data, tab_look, tab_store = st.tabs(
+tab_ai, tab_spend, tab_note, tab_data, tab_look, tab_store, tab_perf = st.tabs(
     [":material/memory: Models & keys", ":material/payments: Spending", ":material/notifications: Notifications",
      ":material/travel_explore: Data & scraping", ":material/palette: Appearance",
-     ":material/database: Storage & history"])
+     ":material/database: Storage & history", ":material/speed: Performance"])
 
 # --------------------------------------------------------------------------
 # Models and providers
@@ -504,3 +504,102 @@ with tab_note:
         else:
             st.success("Sent — check your notifications" + (" and inbox." if "email" in channels else "."),
                        icon=":material/check_circle:")
+
+# --------------------------------------------------------------------------
+# Performance: how heavy the app is allowed to be
+# --------------------------------------------------------------------------
+with tab_perf:
+    import portfolio as pf
+    import runtime
+
+    p = pf.perf(s)
+    st.markdown("**What the app does when you are not looking at it**")
+    st.caption("This app is meant to sit in the background. Everything here trades speed for "
+               "lightness — the defaults favour speed.")
+
+    used = runtime.memory_mb()
+    live = pf.STATUS["running"]
+    mem1, mem2, mem3 = st.columns(3)
+    mem1.metric("Memory in use", f"{used:,.0f} MB" if used else "—", border=True,
+                help="Peak resident memory for this process since it started. The target this app "
+                     "is built to is under 500 MB while idle.")
+    mem2.metric("Background work", "Running" if live else ("On" if p["background_refresh"] else "Off"),
+                f"analysing {live}" if live else None, border=True)
+    mem3.metric("Stocks tracked", len(pf.tracked()), border=True)
+    if used and used > 500:
+        st.warning(f"This session is using {used:,.0f} MB. Turning off chart preloading and lowering "
+                   "the cache sizes below will bring it down after a restart.",
+                   icon=":material/memory_alt:")
+
+    lean = st.toggle(
+        "Lean mode", value=not p["warm_charts"] and p["chart_cache"] <= 4,
+        help="One switch for a light footprint: no chart preloading and small caches. Charts take "
+             "a few seconds longer the first time you open one.")
+    background = st.toggle(
+        "Keep working in the background", value=p["background_refresh"],
+        help="Re-analyses held stocks on the schedule below, checks price alerts and builds the "
+             "weekly digest. Off, nothing happens unless you open a page and ask for it.")
+    warm = st.toggle(
+        "Preload the charting library at startup", value=p["warm_charts"], disabled=lean,
+        help="Costs about 30 MB of memory and makes the first chart instant instead of taking a "
+             "few seconds.")
+
+    st.markdown("**How much to keep in memory**")
+    st.caption("Lower numbers use less memory and cause more re-fetching. These take effect when "
+               "the app restarts; the button below clears what is held right now.")
+    c1, c2, c3 = st.columns(3)
+    chart_cache = c1.number_input("Price histories", 1, 60, int(p["chart_cache"]), disabled=lean,
+                                  help="Years of daily bars each — the largest thing the app holds.")
+    quote_cache = c2.number_input("Latest quotes", 10, 2000, int(p["quote_cache"]), step=10)
+    search_cache = c3.number_input("Company searches", 50, 5000, int(p["search_cache"]), step=50)
+
+    r1, r2 = st.columns(2)
+    refresh_hours = r1.number_input("Re-analyse each held stock every (hours)", 0, 720,
+                                    int(pf.prefs(s)["refresh_hours"]), disabled=not background,
+                                    help="0 analyses a stock once, when you add it, and never again.")
+    workers = r2.number_input("Filings downloaded at once", 1, 16, int(s["data"]["doc_workers"]),
+                              help="More is faster but heavier, and less polite to the source site.")
+
+    if st.button("Save performance settings", type="primary", icon=":material/save:"):
+        s["performance"] = {
+            "background_refresh": background,
+            "warm_charts": False if lean else warm,
+            "chart_cache": 4 if lean else int(chart_cache),
+            "quote_cache": int(quote_cache), "search_cache": int(search_cache)}
+        s["portfolio"] = {**s["portfolio"], "refresh_hours": int(refresh_hours)}
+        s["data"]["doc_workers"] = int(workers)
+        cfg.save(s)
+        core.apply_settings(s)
+        st.toast("Performance settings saved — restart the app for the memory limits to apply.",
+                 icon=":material/check_circle:")
+
+    if st.button("Free memory now", icon=":material/cleaning_services:",
+                 help="Drops everything cached in memory. Nothing is lost: it is all re-fetched "
+                      "or recomputed when next needed."):
+        st.cache_data.clear()
+        freed = runtime.memory_mb()
+        st.toast(f"Caches cleared. Now using {freed:,.0f} MB." if freed else "Caches cleared.",
+                 icon=":material/check_circle:")
+
+    # --- Start with the computer ---------------------------------------------
+    st.divider()
+    st.markdown("**Start automatically**")
+    installed, where = runtime.status()
+    st.caption(f"Launch the app in the background whenever you log in, so alerts, the weekly digest "
+               f"and background re-analysis keep running without you starting it. "
+               f"{runtime.DESCRIPTION}")
+    a1, a2 = st.columns([1, 2], vertical_alignment="center")
+    want = a1.toggle("Start when I log in", value=installed, key="autostart_toggle")
+    if want != installed:
+        try:
+            if want:
+                runtime.enable()
+                st.success(f"Set up. The app will start on your next login, and is written to "
+                           f"`{where}`.", icon=":material/check_circle:")
+            else:
+                runtime.disable()
+                st.info("Removed. The app will no longer start on its own.", icon=":material/info:")
+        except Exception as exc:
+            st.error(f"Could not change that: {exc}", icon=":material/error:")
+    if installed:
+        a2.caption(f"Installed at `{where}`")

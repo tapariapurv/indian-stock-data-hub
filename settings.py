@@ -98,6 +98,16 @@ DEFAULTS = {
     # Every held stock is re-analysed this often in the background; 0 = only
     # once, when it is added.
     "portfolio": {"refresh_hours": 24, "track_positions": True, "max_stock_pct": 20, "max_sector_pct": 35},
+    # What the app is allowed to do when you are not looking at it, and how
+    # much memory it may keep warm. Everything here trades speed for
+    # lightness; the defaults favour speed, "Lean" favours lightness.
+    "performance": {
+        "background_refresh": True,  # the refresher thread at all
+        "warm_charts": True,         # preload the charting library so the first chart is instant
+        "chart_cache": 8,            # price histories held in memory (years of daily bars each)
+        "quote_cache": 200,          # companies whose latest quote is remembered
+        "search_cache": 500,         # company-search results remembered
+    },
     # Where alerts and the weekly digest go: "mac" (a macOS notification) and/or
     # "email" (sent by your own Google Apps Script web app, to you only).
     "notify": {"channels": ["mac"], "email_url": "", "email_token": "",

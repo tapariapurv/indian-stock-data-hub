@@ -20,6 +20,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from importlib.util import find_spec
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -35,23 +36,14 @@ import archive
 import llm
 import settings as cfg
 
-try:
-    import pdfplumber
-    PDFPLUMBER_AVAILABLE = True
-except ImportError:
-    PDFPLUMBER_AVAILABLE = False
-
-try:
-    import openpyxl  # noqa: F401  (availability flag for the UI)
-    OPENPYXL_AVAILABLE = True
-except ImportError:
-    OPENPYXL_AVAILABLE = False
-
-try:
-    import docx  # noqa: F401
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
+# Asked, not imported. These three exist only to grey out a button in the UI,
+# and importing them to find out cost ~26 MB of resident memory in every
+# session -- including one that never opens a PDF or builds a report. The
+# real import happens where the work does: pdfplumber below, openpyxl and
+# python-docx inside exports.py.
+PDFPLUMBER_AVAILABLE = find_spec("pdfplumber") is not None
+OPENPYXL_AVAILABLE = find_spec("openpyxl") is not None
+DOCX_AVAILABLE = find_spec("docx") is not None
 
 WANTED_CATEGORIES = cfg.WANTED_CATEGORIES
 GUIDE_URL = "app/static/user_guide.pdf"  # served from ./static (see .streamlit/config.toml)
@@ -356,6 +348,8 @@ def extract_all_numbers(pdf_path: Path, source_category: str = "",
     """
     if not PDFPLUMBER_AVAILABLE or not pdf_path.exists():
         return []
+
+    import pdfplumber  # here, not at module level: see the availability flags above
 
     findings, seen = [], set()
     try:
