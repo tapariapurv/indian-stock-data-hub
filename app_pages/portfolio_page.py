@@ -207,6 +207,12 @@ n_unread = alerts.unread()
 SECTIONS = {"Holdings": ":material/view_module:", "Performance": ":material/show_chart:",
             "Allocation": ":material/donut_large:", "Alerts": ":material/notifications:",
             "Digest": ":material/newspaper:"}
+# Only for people who track quantities. Someone using this as a watchlist
+# never sees a tab about capital gains.
+if positions:
+    SECTIONS = {**{k: SECTIONS[k] for k in ("Holdings", "Performance")},
+                "Trades": ":material/receipt_long:",
+                **{k: SECTIONS[k] for k in ("Allocation", "Alerts", "Digest")}}
 section = st.segmented_control(
     "Section", list(SECTIONS), default="Holdings", required=True, key="pf_section",
     label_visibility="collapsed",
@@ -229,6 +235,100 @@ if section == "Performance":
     st.caption("How the stocks you hold **today** have performed over the past year"
                + (", weighted by your quantities" if positions and qty.sum() else ", equally weighted")
                + ", against the Nifty 50. Buys and sells in between are not modelled.")
+    st.stop()
+
+if section == "Trades":
+    st.caption("Log what you actually bought and sold and the quantity and average price above are "
+               "worked out from it — including realised gains, split short and long term, and a "
+               "money-weighted return. A stock with no trades keeps whatever you typed in.")
+    log = pf.trades(None if view == "All accounts" else view)
+
+    with st.expander("Record a trade", icon=":material/add_circle:", expanded=not log):
+        held_now = sorted({h["ticker"] for h in rows})
+        t1, t2, t3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+        into = t1.selectbox("Account", list(names), format_func=names.get,
+                            index=list(names).index(view) if view in names else 0, key="tr_acct")
+        which = t2.selectbox("Stock", held_now, key="tr_ticker")
+        side = t3.selectbox("Side", ["buy", "sell"], key="tr_side")
+        t4, t5, t6, t7 = st.columns(4, vertical_alignment="bottom")
+        qty = t4.number_input("Quantity", min_value=0.0, step=1.0, value=None, key="tr_qty")
+        price = t5.number_input("Price per share (₹)", min_value=0.0, step=1.0, value=None, key="tr_price")
+        when = t6.date_input("Date", value=datetime.now(pf.IST).date(),
+                             max_value=datetime.now(pf.IST).date(), key="tr_date")
+        fees = t7.number_input("Charges (₹)", min_value=0.0, step=1.0, value=0.0, key="tr_fees",
+                               help="Brokerage, STT and the rest. Added to the cost of a buy and "
+                                    "taken off the proceeds of a sell.")
+        if st.button("Add trade", type="primary", icon=":material/add:",
+                     disabled=not (which and qty and price)):
+            pf.add_trade(into, which, side, qty, price, when.isoformat(), fees)
+            st.toast(f"{side.title()} of {qty:,.0f} {which} recorded.", icon=":material/check_circle:")
+            st.rerun()
+
+    if not log:
+        st.info("No trades recorded yet. Until you add some, quantities and average prices stay "
+                "exactly as you typed them.", icon=":material/info:")
+        st.stop()
+
+    gains, unmatched = pf.fifo_gains(log)
+    if unmatched:
+        st.warning(f"{unmatched:,.0f} share(s) were sold with no matching buy on record, so no gain "
+                   "is shown for them. Add the missing purchase and it will work itself out.",
+                   icon=":material/warning:")
+
+    # Money-weighted return across everything on screen.
+    value_now = float(df["Value"].sum(skipna=True) or 0)
+    rate = pf.xirr(pf.cashflows(log, value_now))
+    realised = sum(g["gain"] for g in gains)
+    x1, x2, x3 = st.columns(3)
+    x1.metric("Money-weighted return", f"{rate * 100:+.1f}% a year" if rate is not None else "—",
+              border=True, help="XIRR: what your money earned given when you put it in and took it "
+                                "out. Not the same as the change in price.")
+    x2.metric("Realised gain", inr(realised) if gains else "—", border=True,
+              help="Profit on shares actually sold, matched first-in first-out.")
+    x3.metric("Trades recorded", len(log), border=True)
+
+    if gains:
+        st.markdown("**Realised gains by financial year**")
+        gdf = pd.DataFrame(gains)
+        gdf["FY"] = gdf["sold"].map(lambda d: pf.financial_year(datetime.fromisoformat(d).date()))
+        years = sorted(gdf["FY"].unique(), reverse=True)
+        pick_fy = st.segmented_control("Financial year", years, default=years[0], required=True,
+                                       key="tr_fy", label_visibility="collapsed")
+        year_rows = gdf[gdf["FY"] == pick_fy]
+        short = year_rows[year_rows["term"] == "Short"]["gain"].sum()
+        long_ = year_rows[year_rows["term"] == "Long"]["gain"].sum()
+        f1, f2 = st.columns(2)
+        f1.metric(f"Short term, {pick_fy}", inr(short), border=True,
+                  help="Shares held 12 months or less.")
+        f2.metric(f"Long term, {pick_fy}", inr(long_), border=True,
+                  help="Shares held more than 12 months.")
+        show = year_rows[["ticker", "bought", "sold", "qty", "buy_price", "sell_price", "days",
+                          "term", "gain"]].rename(columns={
+                              "ticker": "Stock", "bought": "Bought", "sold": "Sold", "qty": "Qty",
+                              "buy_price": "Buy ₹", "sell_price": "Sell ₹", "days": "Days held",
+                              "term": "Term", "gain": "Gain ₹"})
+        st.dataframe(show.style.map(lambda v: "" if pd.isna(v) else
+                                    f"color: {GOOD if v >= 0 else BAD}; font-weight: 600",
+                                    subset=["Gain ₹"])
+                     .format({"Qty": "{:,.0f}", "Buy ₹": "₹{:,.2f}", "Sell ₹": "₹{:,.2f}",
+                              "Gain ₹": "₹{:+,.0f}", "Days held": "{:,.0f}"}),
+                     hide_index=True)
+        st.download_button("Download these gains (CSV)", show.to_csv(index=False).encode(),
+                           file_name=f"realised_gains_{pick_fy}.csv", mime="text/csv",
+                           icon=":material/download:", type="tertiary")
+        st.caption("Matched first-in first-out, the basis Indian equity taxation uses, with charges "
+                   "inside the cost. The 12-month line splits short from long term. This is a record "
+                   "of your own trades, not tax advice — rates and exemptions change, so the app "
+                   "deliberately does not compute tax owed.")
+
+    with st.expander("All trades", icon=":material/list:"):
+        for t in sorted(log, key=lambda r: str(r["date"]), reverse=True):
+            c1, c2 = st.columns([8, 1], vertical_alignment="center")
+            c1.markdown(f"**{t['ticker']}** · {t['side']} {t['qty']:,.0f} @ ₹{t['price']:,.2f} "
+                        f":gray[· {t['date']}" + (f" · charges ₹{t['fees']:,.0f}" if t["fees"] else "") + "]")
+            if c2.button("", icon=":material/delete:", key=f"tr_del_{t['id']}", type="tertiary"):
+                pf.delete_trade(t["id"])
+                st.rerun()
     st.stop()
 
 if section == "Allocation":

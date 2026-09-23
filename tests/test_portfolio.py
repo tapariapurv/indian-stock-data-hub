@@ -105,6 +105,20 @@ assert pf.xirr([]) is None
 
 print("ok: XIRR solves, respects timing, and returns nothing when no rate exists")
 
+# --- Cashflows feed XIRR the right signs -------------------------------------
+flows = pf.cashflows([trade(1, "buy", 10, 100.0, "2025-01-01", fees=20.0),
+                      trade(2, "sell", 4, 150.0, "2025-07-01", fees=10.0)],
+                     holding_value=900.0, today=date(2026, 1, 1))
+assert flows[0] == (date(2025, 1, 1), -1020.0), flows      # cost plus charges, out
+assert flows[1] == (date(2025, 7, 1), 590.0), flows        # proceeds less charges, in
+assert flows[2] == (date(2026, 1, 1), 900.0), flows        # what is still held, in
+assert pf.xirr(flows) is not None
+# Nothing held any more: no closing inflow is invented.
+assert len(pf.cashflows([trade(1, "buy", 10, 100.0, "2025-01-01")], 0)) == 1
+# An unreadable date is skipped rather than crashing the page.
+assert pf.cashflows([trade(1, "buy", 10, 100.0, "not-a-date")], 0) == []
+print("ok: cashflows carry the right signs and charges")
+
 # --- Financial year ----------------------------------------------------------
 assert pf.financial_year(date(2026, 4, 1)) == "2026-27"
 assert pf.financial_year(date(2026, 3, 31)) == "2025-26"

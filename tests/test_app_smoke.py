@@ -2,17 +2,44 @@
 realistic analysis result injected, so every tab's rendering code executes.
 Catches Streamlit API changes after a dependency upgrade.
 Run: python tests/test_app_smoke.py   (no network or Ollama needed)"""
+import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
-from streamlit.testing.v1 import AppTest
+# Before anything reads it: the whole app is pointed at a throwaway data
+# directory, so a test run cannot read or write the real portfolio, archive
+# or spend ledger. STOCK_HUB_DATA is the same switch the app documents.
+_tmp = tempfile.TemporaryDirectory()
+os.environ["STOCK_HUB_DATA"] = _tmp.name
+
+import pandas as pd  # noqa: E402
+from streamlit.testing.v1 import AppTest  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 # `streamlit run` puts the script's folder on the path; AppTest does not.
 sys.path.insert(0, str(ROOT))
 APP = str(ROOT / "app.py")
+
+import portfolio as _pf  # noqa: E402
+
+# Offline: no price lookups, and no background refresher analysing the
+# seeded holdings over the network the moment the app starts.
+_pf.start_refresher = lambda: None
+_pf.quotes = lambda stocks: {}
+_pf.performance = lambda *a, **k: None
+_pf.calendar = lambda *a, **k: []
+_pf.history = lambda *a, **k: None
+_pf.pe_history = lambda *a, **k: None
+
+# Seeded before the first render: the Archive page caches its document count,
+# so anything added later is invisible for the rest of the run.
+import archive as _ar  # noqa: E402
+
+_ar.store_document("sha-smoke", "DEMO", "Annual Report", str(ROOT / "demo.pdf"), [],
+                   [(1, "Capital expenditure of Rs 1,200 crore is planned for the new plant."),
+                    (2, "The authorised share capital of the Company stands at Rs 500 crore.")])
 
 at = AppTest.from_file(APP, default_timeout=60).run()
 assert not at.exception, [e.value for e in at.exception]
@@ -76,3 +103,43 @@ if arch.text_input:                      # skipped when the archive is empty
               "no model involved")
     else:
         print("ok: keyword search ran (nothing matched in this archive)")
+
+# --- A portfolio with trades in it -------------------------------------------
+# The sections that only appear once you track quantities have to render too,
+# and the money on screen has to match what the maths says.
+_pf.add_account("Smoke account")
+_acct = _pf.accounts()[0]["id"]
+_pf.save_holding(_acct, "DEMO", "Demo Industries Ltd", None, None, None)
+_pf.add_trade(_acct, "DEMO", "buy", 100, 250.0, "2024-05-01", fees=20.0)
+_pf.add_trade(_acct, "DEMO", "buy", 50, 300.0, "2025-05-01")
+_pf.add_trade(_acct, "DEMO", "sell", 60, 400.0, "2026-05-01", fees=30.0)
+
+port = AppTest.from_file(APP, default_timeout=120).run()
+port.switch_page("app_pages/portfolio_page.py").run()
+assert not port.exception, [e.value for e in port.exception]
+
+sections = [c for c in port.segmented_control if "Trades" in (c.options or [])]
+assert sections, f"Trades section missing from {[c.options for c in port.segmented_control]}"
+sections[0].set_value("Trades").run()
+assert not port.exception, [e.value for e in port.exception]
+
+_text = " ".join(m.value for m in port.markdown)
+assert "Realised gains by financial year" in _text, _text[:400]
+_metrics = {m.label: m.value for m in port.metric}
+assert "Money-weighted return" in _metrics, _metrics
+assert _metrics["Trades recorded"] == "3", _metrics
+# 60 sold out of the oldest lot at 250.2: (400 - 0.5 charges - 250.2) * 60.
+_gains, _unmatched = _pf.fifo_gains(_pf.trades(_acct, "DEMO"))
+assert not _unmatched and abs(sum(g["gain"] for g in _gains) - 8958.0) < 1.0, _gains
+assert _metrics["Realised gain"] == "₹8,958", _metrics
+print(f"ok: portfolio renders with trades, and the page agrees with the maths "
+      f"({_metrics['Realised gain']} realised)")
+
+# The stock page renders for a held stock, not just an empty portfolio.
+stock = AppTest.from_file(APP, default_timeout=120).run()
+stock.session_state["stock"] = "DEMO"
+stock.switch_page("app_pages/stock.py").run()
+assert not stock.exception, [e.value for e in stock.exception]
+print("ok: the stock page renders for a held stock")
+
+_tmp.cleanup()

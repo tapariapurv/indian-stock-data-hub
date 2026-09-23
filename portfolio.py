@@ -266,6 +266,23 @@ def xirr(flows: list[tuple], guess_lo: float = -0.9999, guess_hi: float = 10.0) 
     return (lo + hi) / 2
 
 
+def cashflows(rows: list[dict], holding_value: float, today=None) -> list[tuple]:
+    """Dated cashflows for XIRR: money out on a buy, in on a sell, and what
+    the position is worth now as a final inflow. Charges are money out too."""
+    flows = []
+    for t in rows:
+        qty, price, fees = float(t["qty"]), float(t["price"]), float(t.get("fees") or 0)
+        try:
+            day = datetime.fromisoformat(str(t["date"])).date()
+        except ValueError:
+            continue
+        gross = qty * price
+        flows.append((day, -(gross + fees) if str(t["side"]).lower() == "buy" else gross - fees))
+    if holding_value:
+        flows.append((today or datetime.now(IST).date(), float(holding_value)))
+    return flows
+
+
 FY_START_MONTH = 4  # Indian financial year runs April to March
 
 
