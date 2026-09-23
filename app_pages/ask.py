@@ -53,7 +53,8 @@ def show_sources(sources: list[dict], key: str):
     with st.container(horizontal=True, gap="small"):
         for i, s in enumerate(sources[:8], start=1):
             icon = {"portfolio": ":material/account_balance_wallet:", "analysis": ":material/query_stats:",
-                    "filing": ":material/description:"}[s["kind"]]
+                    "filing": ":material/description:", "tally": ":material/functions:",
+                    }.get(s["kind"], ":material/source:")
             with st.popover(f"{i} · {s['label'].split(' · ')[0]}", icon=icon, type="tertiary"):
                 st.markdown(f"**[{i}]** {s['label']}")
                 if s.get("path"):

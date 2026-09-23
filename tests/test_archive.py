@@ -111,9 +111,6 @@ assert archive.search("margins", extra_terms=["operating margin", "profitability
 # Stopwords alone must not match every page in the archive.
 assert archive._fts_query("what about the") == "", "a question of stopwords yields no query"
 
-# Without a model, smart_search degrades to plain retrieval rather than failing.
-plain = core.smart_search("loan book", {**cfg.load(), "ai": {**cfg.load()["ai"], "enabled": False}})
-assert plain["hits"] and plain["answer"] is None and plain["tokens"] == 0, plain
 # --- coverage, common-word filtering and match windows -----------------------
 # The chat once answered "which companies mentioned China?" with two of the
 # twenty-three in the archive, because it saw six passages and because

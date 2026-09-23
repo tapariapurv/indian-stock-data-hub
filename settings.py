@@ -107,6 +107,9 @@ DEFAULTS = {
         "chart_cache": 8,            # price histories held in memory (years of daily bars each)
         "quote_cache": 200,          # companies whose latest quote is remembered
         "search_cache": 500,         # company-search results remembered
+        # Ask AI: let the model choose which retrieved passages to read.
+        # Better answers on a large archive, one more request per question.
+        "rank_passages": True,
     },
     # Where alerts and the weekly digest go: "mac" (a macOS notification) and/or
     # "email" (sent by your own Google Apps Script web app, to you only).

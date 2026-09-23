@@ -637,7 +637,8 @@ ANALYST = ("You are a careful equity analyst covering Indian listed companies. "
 
 
 # The citation example, kept here so the guard below can recognise it coming
-# back. Deliberately free of figures: see synthesize_search.
+# back. Deliberately free of figures: an example carrying realistic
+# numbers was copied into an answer and reported as fact.
 EXAMPLE_ANSWER = "The new plant will add capacity [2], funded from internal accruals [1]."
 
 
@@ -1014,65 +1015,6 @@ def rerank_passages(question: str, snippets: list[dict], settings: dict,
             order.append(index)
     return (order[:keep] or list(range(min(keep, len(snippets))))), tokens
 
-
-def synthesize_search(question: str, snippets: list[dict], settings: dict,
-                      history: list[dict] | None = None, coverage: dict | None = None,
-                      matched_pages: int = 0) -> tuple[str | None, int]:
-    """Answer a question using only the retrieved passages, each cited.
-
-    Structured output, for the same reason as everywhere else: asked in
-    prose, a model that narrates will spend the whole budget restating the
-    question before it answers.
-    """
-    if not snippets:
-        return None, 0
-    body = "\n\n".join(
-        f"[{i + 1}] {s['ticker']} · {s['category']} · page {s['page']}:\n"
-        f"{s.get('focus') or ' '.join(s['text'][:450].split())}"
-        for i, s in enumerate(snippets[:8]))
-    # The passages are a sample; this tally is the whole archive. Without it
-    # the model answers "which companies..." from the sample and is wrong.
-    tally = ""
-    if coverage:
-        listed = ", ".join(f"{ticker} ({count})" for ticker, count in list(coverage.items())[:30])
-        tally = (f"\n\nComplete tally from the whole archive (not just the passages above): "
-                 f"{matched_pages} page(s) match, across {len(coverage)} compan(y/ies) — {listed}. "
-                 f"If the question asks which, how many, or whether a company is involved, answer "
-                 f"from this tally and name the companies; the passages are only for detail and "
-                 f"quotes.")
-    # Never a bare count in the instructions: asked for "three to five
-    # sentences", a small model replied with the answer "three to five years".
-    # A word limit cannot be mistaken for the content.
-    # The example shows where the bracket goes and nothing else. An earlier
-    # version illustrated it with realistic figures ("Rs 1,500 crore [2]")
-    # and a 0.5B model copied them into its answer as though they were real
-    # -- inventing a capex number for a company it had just been given the
-    # true one for. An example in a finance prompt must contain no figure a
-    # model could pass off as data.
-    system = _json_only(
-        '{"answer": "%s"}' % EXAMPLE_ANSWER,
-        'Answer the question in at most 120 words, using only the passages given.',
-        'Quote the figures from the passages, and put the number of the passage each figure came '
-        'from in square brackets straight after it, as the example shows. Never copy the wording '
-        'or any value out of the example itself. Where companies differ, say how.',
-        'If the passages do not answer the question, say plainly which part is missing rather '
-        'than filling the gap.')
-    thread = ""
-    if history:
-        thread = "Earlier in this conversation:\n" + "\n".join(
-            f"{turn['role']}: {' '.join(str(turn['content']).split())[:200]}"
-            for turn in history[-4:]) + "\n\n"
-    raw, tokens = complete(f"{thread}Passages from company filings:\n{body}{tally}\n\n"
-                           f"Question: {question}",
-                           settings["ai"]["tokens_synthesis"], settings, "Archive answer",
-                           system=system, schema=_schema("answer"))
-    reply = _json_reply(raw, "answer")
-    answer = _clean_answer(str(reply.get("answer") or "")) if reply else None
-    if not answer:
-        answer = _clean_answer(_strip_markers(_marked(raw) or raw))
-    if _echoes(answer, EXAMPLE_ANSWER):
-        return None, tokens  # the example read back, not an answer
-    return (_drop_cut_off_sentence(answer) if answer else None), tokens
 
 
 def token_note(tokens: int, generated_at: float, run_started: float) -> str:

@@ -138,6 +138,25 @@ _, srcs_follow = assistant.build_context("and its margins?", history)
 assert any(s.get("ticker") == "ALPHAC" for s in srcs_follow), \
     f"a follow-up lost the company: {[s.get('ticker') for s in srcs_follow]}"
 
+# "Which companies mentioned X?" cannot be answered from the handful of
+# passages the model reads. Nine companies mention Dahej here, and only six
+# passages are ever shown, so without a whole-archive tally the answer is
+# confidently six.
+for n in range(9):
+    archive.store_document(f"sha-many-{n}", f"MANY{n}", "Annual Report", "/tmp/m.pdf", [],
+                           [(2, f"Our Dahej facility expanded capacity by {n + 5}% this year.")])
+ctx_t, srcs_t = assistant.build_context("which companies mentioned Dahej?", [])
+tally = [s for s in srcs_t if s["kind"] == "tally"]
+assert tally, f"no whole-archive tally: {[s['kind'] for s in srcs_t]}"
+# Ten, not nine: ALPHAC's transcript names Dahej too, and the tally finds it.
+assert "10 companies" in ctx_t, ctx_t[ctx_t.find("Counted across"):][:200]
+for name in [f"MANY{n}" for n in range(9)] + ["ALPHAC"]:
+    assert name in ctx_t, f"{name} missing from the tally"
+# A narrative question must not drag a tally in.
+_, srcs_narrative = assistant.build_context("what did they say about Dahej capacity?", [])
+assert not any(s["kind"] == "tally" for s in srcs_narrative), "a tally is only for counting questions"
+print("ok: a 'which companies' question is counted across the whole archive, not the sample")
+
 # Sources are numbered from 1 and the prompt's [n] markers line up with the chips.
 marks = [int(m) for m in re.findall(r"^\[(\d+)\]", ctx_p, re.M)]
 assert marks == list(range(1, len(srcs_p) + 1)), (marks, len(srcs_p))

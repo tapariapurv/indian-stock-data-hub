@@ -543,6 +543,12 @@ with tab_perf:
         "Preload the charting library at startup", value=p["warm_charts"], disabled=lean,
         help="Costs about 30 MB of memory and makes the first chart instant instead of taking a "
              "few seconds.")
+    rank = st.toggle(
+        "Let Ask AI rank passages before answering", value=p.get("rank_passages", True),
+        help="With a large archive, the model picks which retrieved passages actually answer your "
+             "question — 'share capital' is not capital expenditure. It costs one extra request "
+             "per question, which is worth a few seconds locally and can be slower on a hosted "
+             "provider. Off, the best keyword matches are used as they come.")
 
     st.markdown("**How much to keep in memory**")
     st.caption("Lower numbers use less memory and cause more re-fetching. These take effect when "
@@ -565,7 +571,8 @@ with tab_perf:
             "background_refresh": background,
             "warm_charts": False if lean else warm,
             "chart_cache": 4 if lean else int(chart_cache),
-            "quote_cache": int(quote_cache), "search_cache": int(search_cache)}
+            "quote_cache": int(quote_cache), "search_cache": int(search_cache),
+            "rank_passages": rank}
         s["portfolio"] = {**s["portfolio"], "refresh_hours": int(refresh_hours)}
         s["data"]["doc_workers"] = int(workers)
         cfg.save(s)

@@ -285,14 +285,8 @@ def check_retrieval(s, rep):
             bool(order) and many[order[0]]["category"] == "Concall Transcript",
             f"order {order[:4]}", tokens2, secs2)
 
-    (res3, secs3) = timed(llm.synthesize_search, "what is the capex plan?", PASSAGES, s)
-    answer, tokens3 = res3
-    rep.add("answer: returns prose", answer, (answer or "nothing")[:90], tokens3, secs3)
-    rep.add("answer: uses the real figure", "1,200" in (answer or "") or "1200" in (answer or ""),
-            (answer or "")[:90])
-    rep.add("answer: cites a passage", bool(re.search(r"\[\d\]", answer or "")), (answer or "")[:90])
-    bad = unsourced(answer or "", " ".join(p["text"] for p in PASSAGES))
-    rep.add("answer: no invented figures", not bad, f"unsourced: {sorted(bad)}" if bad else "")
+    # Answering from passages now lives in the Ask AI chat, which streams:
+    # tests/test_ask.py covers it end to end, including citations.
 
 
 def run(model: str) -> tuple[int, int]:

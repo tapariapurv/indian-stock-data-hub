@@ -141,9 +141,22 @@ def build_context(question: str, history: list[dict], scope: list[str] | None = 
         # matches -- the page that says "share capital" when the question was
         # about capital expenditure. Only worth a call when there is real
         # choice to make, so a small archive still answers in one request.
-        if len(hits) > RERANK_ABOVE and settings and core.ai_signature(settings)[0]:
+        if (len(hits) > RERANK_ABOVE and settings and core.ai_signature(settings)[0]
+                and pf.perf(settings).get("rank_passages", True)):
             order, _ = llm.rerank_passages(question, hits, core._wide_context(settings), keep=KEEP)
             hits = [hits[i] for i in order] or hits
+        # "Which of my companies mentioned China?" cannot be answered from the
+        # six passages the model reads -- with nine companies matching it will
+        # confidently name six. This tally is counted in SQL across every
+        # indexed page, so the count is complete whatever the model sees.
+        matched, tally = archive.coverage(question, tickers or None, extra_terms=extra)
+        sentence = core.coverage_sentence(question, matched, tally)
+        if sentence:
+            add("tally", f"Whole-archive count · {len(tally)} compan"
+                         f"{'y' if len(tally) == 1 else 'ies'}",
+                "Counted across every indexed page in the archive, not only the passages below. "
+                "For a question asking which companies, or how many, answer from this count and "
+                "name them all:\n" + re.sub(r"\*\*", "", sentence))
         for hit in hits[:KEEP]:
             add("filing", f"{hit['ticker']} · {hit['category']} · page {hit['page']}",
                 core._focus(hit["text"], terms + extra), ticker=hit["ticker"], page=hit["page"],
