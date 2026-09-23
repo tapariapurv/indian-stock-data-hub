@@ -38,6 +38,10 @@ CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS digests (id INTEGER PRIMARY KEY, week TEXT UNIQUE, ts REAL, data TEXT);
 CREATE TABLE IF NOT EXISTS screens (name TEXT PRIMARY KEY, query TEXT);
 CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY, title TEXT, updated REAL, messages TEXT);
+CREATE TABLE IF NOT EXISTS trades (
+    id INTEGER PRIMARY KEY, account_id INTEGER, ticker TEXT, side TEXT,
+    qty REAL, price REAL, fees REAL DEFAULT 0, date TEXT, note TEXT, created REAL);
+CREATE INDEX IF NOT EXISTS trades_at ON trades(account_id, ticker, date);
 """
 _ready = False
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -114,6 +118,161 @@ def latest_runs(tickers) -> dict[str, dict]:
               f"JOIN (SELECT ticker, MAX(ts) AS ts FROM runs WHERE ticker IN ({marks}) GROUP BY ticker) m "
               f"ON r.ticker = m.ticker AND r.ts = m.ts", tickers)
     return {r["ticker"]: r for r in rows}
+
+
+# --- Trades: what you actually bought and sold -------------------------------
+#
+# Optional, and additive. A holding still works exactly as before if you only
+# ever type in a quantity and an average price. Log trades for a stock and the
+# same holdings row is recomputed from them instead -- so the grid, the
+# allocation treemap, the alerts and the performance chart all keep reading
+# the one field they always read, and none of that code had to change.
+
+def trades(account_id: int | None = None, ticker: str | None = None) -> list[dict]:
+    sql = "SELECT * FROM trades WHERE 1=1"
+    params: list = []
+    if account_id is not None:
+        sql += " AND account_id=?"
+        params.append(account_id)
+    if ticker:
+        sql += " AND ticker=?"
+        params.append(ticker.upper())
+    return _q(sql + " ORDER BY date, id", params)
+
+
+def add_trade(account_id: int, ticker: str, side: str, qty: float, price: float,
+              date: str, fees: float = 0.0, note: str = "") -> None:
+    _q("INSERT INTO trades (account_id, ticker, side, qty, price, fees, date, note, created) "
+       "VALUES (?,?,?,?,?,?,?,?,?)",
+       (account_id, ticker.upper(), side, float(qty), float(price), float(fees or 0),
+        str(date), note, time.time()))
+    sync_from_trades(account_id, ticker)
+
+
+def delete_trade(trade_id: int) -> None:
+    rows = _q("SELECT account_id, ticker FROM trades WHERE id=?", (trade_id,))
+    _q("DELETE FROM trades WHERE id=?", (trade_id,))
+    if rows:
+        sync_from_trades(rows[0]["account_id"], rows[0]["ticker"])
+
+
+def _lots(rows: list[dict]) -> tuple[list[list], list[dict], float]:
+    """Walk the trades oldest first, matching sells against buys FIFO.
+
+    FIFO because that is the basis Indian equity taxation uses, so the
+    realised gains here line up with what has to be declared.
+
+    Returns (open lots, realised gains, quantity sold with no buy to match).
+    """
+    lots: list[list] = []   # [date, qty left, cost per share]
+    gains: list[dict] = []
+    unmatched = 0.0
+    for t in sorted(rows, key=lambda r: (str(r["date"]), r["id"])):
+        qty, price, fees = float(t["qty"]), float(t["price"]), float(t.get("fees") or 0)
+        if qty <= 0:
+            continue
+        if str(t["side"]).lower() == "buy":
+            # Charges belong in the cost of the shares, not beside it.
+            lots.append([str(t["date"]), qty, (qty * price + fees) / qty])
+            continue
+        left = qty
+        net_price = price - (fees / qty if qty else 0)
+        while left > 1e-9 and lots:
+            lot = lots[0]
+            take = min(left, lot[1])
+            gains.append({"ticker": t["ticker"], "bought": lot[0], "sold": str(t["date"]),
+                          "qty": take, "buy_price": lot[2], "sell_price": net_price,
+                          "gain": take * (net_price - lot[2]),
+                          "days": _days_between(lot[0], str(t["date"]))})
+            lot[1] -= take
+            left -= take
+            if lot[1] <= 1e-9:
+                lots.pop(0)
+        unmatched += left  # sold more than was ever bought: flagged, never invented
+    return lots, gains, unmatched
+
+
+def _days_between(start: str, end: str) -> int:
+    try:
+        return (datetime.fromisoformat(end).date() - datetime.fromisoformat(start).date()).days
+    except ValueError:
+        return 0
+
+
+LONG_TERM_DAYS = 365  # listed equity: held more than 12 months
+
+
+def fifo_gains(rows: list[dict]) -> tuple[list[dict], float]:
+    """Realised gains per sale, each tagged short or long term."""
+    _, gains, unmatched = _lots(rows)
+    for g in gains:
+        g["term"] = "Long" if g["days"] > LONG_TERM_DAYS else "Short"
+    return gains, unmatched
+
+
+def position_from_trades(rows: list[dict]) -> tuple[float, float | None]:
+    """(quantity still held, average cost of those shares) from the open lots."""
+    lots, _, _ = _lots(rows)
+    qty = sum(lot[1] for lot in lots)
+    if qty <= 1e-9:
+        return 0.0, None
+    return qty, sum(lot[1] * lot[2] for lot in lots) / qty
+
+
+def sync_from_trades(account_id: int, ticker: str) -> None:
+    """Rewrite the holding from its trades, so the rest of the app is unaware
+    trades exist. A stock whose position closes out is left at zero rather
+    than deleted -- the trades are still the record of it."""
+    rows = trades(account_id, ticker)
+    if not rows:
+        return
+    qty, avg = position_from_trades(rows)
+    _q("UPDATE holdings SET qty=?, avg_price=? WHERE account_id=? AND ticker=?",
+       (qty, avg, account_id, ticker.upper()))
+
+
+def xirr(flows: list[tuple], guess_lo: float = -0.9999, guess_hi: float = 10.0) -> float | None:
+    """The money-weighted annual return of dated cashflows, as a fraction.
+
+    Money out is negative, money in positive, and today's holding counts as a
+    final inflow. Solved by bisection rather than Newton: a couple of hundred
+    halvings costs nothing on a list this size and, unlike Newton, it cannot
+    shoot off to infinity on an awkward set of flows.
+
+    Returns None when there is no sign change, because then no rate exists.
+    """
+    flows = sorted((d, float(a)) for d, a in flows if a)
+    if len(flows) < 2:
+        return None
+    amounts = [a for _, a in flows]
+    if min(amounts) >= 0 or max(amounts) <= 0:
+        return None
+    start = flows[0][0]
+    years = [(d - start).days / 365.0 for d, _ in flows]
+
+    def npv(rate: float) -> float:
+        return sum(a / (1.0 + rate) ** y for y, (_, a) in zip(years, flows))
+
+    lo, hi = guess_lo, guess_hi
+    f_lo, f_hi = npv(lo), npv(hi)
+    if f_lo * f_hi > 0:
+        return None  # not bracketed: no single rate explains these flows
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if npv(lo) * npv(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
+FY_START_MONTH = 4  # Indian financial year runs April to March
+
+
+def financial_year(day) -> str:
+    """The Indian FY a date falls in, e.g. '2026-27'."""
+    year = day.year if day.month >= FY_START_MONTH else day.year - 1
+    return f"{year}-{str(year + 1)[-2:]}"
 
 
 # --- CSV import --------------------------------------------------------------
@@ -253,6 +412,61 @@ def _screener_prices(screener_id, days: int) -> pd.DataFrame | None:
         return None
 
 
+def pe_series(prices: list, eps: list) -> pd.Series | None:
+    """A P/E for every price date, from screener.in's price and TTM EPS series.
+
+    EPS is reported quarterly and the price is weekly, so each EPS figure
+    applies until the next one supersedes it -- which is what a trailing P/E
+    means. Dates before the first EPS figure have nothing to divide by and
+    are dropped, as are loss-making periods, where a P/E is meaningless
+    rather than merely large.
+    """
+    if not prices or not eps:
+        return None
+    p = pd.Series({pd.to_datetime(d): float(v) for d, v in
+                   ((row[0], row[1]) for row in prices)}).sort_index()
+    e = pd.Series({pd.to_datetime(d): float(v) for d, v in
+                   ((row[0], row[1]) for row in eps)}).sort_index()
+    e = e[e > 0]
+    if p.empty or e.empty:
+        return None
+    aligned = e.reindex(p.index.union(e.index)).ffill().reindex(p.index)
+    band = (p / aligned).dropna()
+    return band if not band.empty else None
+
+
+def pe_position(band: pd.Series | None) -> dict | None:
+    """Where today's P/E sits in its own history: the number that turns
+    "P/E 28" into something you can act on."""
+    if band is None or len(band) < 12:   # under a year of points says nothing
+        return None
+    now = float(band.iloc[-1])
+    return {"now": now, "low": float(band.min()), "high": float(band.max()),
+            "median": float(band.median()), "years": round(len(band) / 52.0, 1),
+            "percentile": float((band <= now).mean() * 100)}
+
+
+@st.cache_data(ttl=86400, max_entries=200, show_spinner=False)
+def pe_history(screener_id, day: str) -> pd.Series | None:
+    """Five years of trailing P/E, in one request a day per company.
+
+    Same chart endpoint the price fallback already uses, so this adds a
+    source of nothing -- only a second question to a page we talk to anyway.
+    """
+    if not screener_id:
+        return None
+    try:
+        resp = core.SESSION.get(f"https://www.screener.in/api/company/{screener_id}/chart/",
+                                params={"q": "Price-EPS", "days": 1830}, headers=core._headers(),
+                                timeout=core.REQUEST_TIMEOUT)
+        if not resp.ok:
+            return None
+        sets = {d["metric"]: d["values"] for d in resp.json().get("datasets", [])}
+        return pe_series(sets.get("Price") or [], sets.get("EPS") or [])
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
 def _yf_frame(data: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
     if data is None or data.empty:
         return None
@@ -276,7 +490,7 @@ def quotes(stocks: tuple[tuple[str, int | None], ...]) -> dict[str, dict]:
 
 
 @st.cache_data(ttl=86400, max_entries=200, show_spinner=False)
-def _quotes(stocks: tuple[tuple[str, int | None], ...], _slot: str) -> dict[str, dict]:
+def _quotes(stocks: tuple[tuple[str, int | None], ...], slot: str) -> dict[str, dict]:
     """ticker -> {price, change, change_pct, spark}; one Yahoo request for them all.
     spark is the last month of closes, for the card sparklines."""
     import yfinance as yf
@@ -329,7 +543,7 @@ def day_slot() -> str:
 
 
 @st.cache_data(ttl=86400, max_entries=10, show_spinner=False)
-def performance(holdings: tuple[tuple[str, float], ...], _day: str) -> pd.DataFrame | None:
+def performance(holdings: tuple[tuple[str, float], ...], day: str) -> pd.DataFrame | None:
     """A year of daily value for the current holdings next to the Nifty 50,
     both rebased to 100. One batched request a day. Weighted by quantity when
     known, equally otherwise."""
@@ -378,7 +592,7 @@ def profiles(tickers) -> dict[str, dict]:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def _bse_meetings(_day: str) -> list[dict]:
+def _bse_meetings(day: str) -> list[dict]:
     """Every upcoming results board meeting on BSE -- one request a day for all companies."""
     try:
         resp = core.SESSION.get("https://api.bseindia.com/BseIndiaAPI/api/Corpforthresults/w",
@@ -390,7 +604,7 @@ def _bse_meetings(_day: str) -> list[dict]:
 
 
 @st.cache_data(ttl=43200, max_entries=200, show_spinner=False)
-def calendar(ticker: str, name: str, _day: str) -> list[dict]:
+def calendar(ticker: str, name: str, day: str) -> list[dict]:
     """Upcoming dated events for one stock, soonest first: results (with the
     analyst consensus when Yahoo has one), board meetings, dividends."""
     import yfinance as yf
@@ -409,7 +623,7 @@ def calendar(ticker: str, name: str, _day: str) -> list[dict]:
         if cal.get(key):
             out.append({"date": cal[key], "event": label, "detail": ""})
     first = name.split()[0].lower() if name else ""
-    for m in _bse_meetings(_day):
+    for m in _bse_meetings(day):
         if m.get("short_name", "").upper() == ticker or (first and m.get("Long_Name", "").lower().startswith(first + " ")
                                                          and len(first) > 3):
             try:

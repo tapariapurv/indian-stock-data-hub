@@ -32,10 +32,15 @@ FIELDS = {
     "Face Value": ["face value"],
     "Sector": ["sector"],
     "Verdict": ["verdict", "ai verdict"],
+    # Built from the app's own graded guidance, so it exists nowhere else:
+    # how often this management did what it said it would.
+    "Guidance Score": ["guidance score", "guidance hit rate", "promises kept", "delivery rate"],
+    "Guidance Checked": ["guidance checked", "commitments graded", "promises graded"],
 }
 TEXT_FIELDS = {"Sector", "Verdict"}
 UNITS = {"Market Cap": "₹ Cr", "Current Price": "₹", "Book Value": "₹", "Dividend Yield": "%", "ROCE": "%",
-         "ROE": "%", "Sales Growth": "% YoY", "Profit Growth": "% YoY", "OPM": "%", "Face Value": "₹"}
+         "ROE": "%", "Sales Growth": "% YoY", "Profit Growth": "% YoY", "OPM": "%", "Face Value": "₹",
+         "Guidance Score": "%", "Guidance Checked": "count"}
 ALIASES = sorted(((alias, field) for field, names in FIELDS.items() for alias in names), key=lambda a: -len(a[0]))
 PRESETS = {
     "Quality at a fair price": "ROCE > 20 AND ROE > 15 AND P/E < 30",
@@ -43,6 +48,8 @@ PRESETS = {
     "Dividend payers": "Dividend Yield > 2 AND ROE > 12",
     "Cheap on book": "Price to Book < 1.5 AND ROE > 10",
     "AI likes it": "Verdict = Positive",
+    # Three graded promises is the floor: one kept promise is not a record.
+    "Management keeps its word": "Guidance Score > 60 AND Guidance Checked >= 3",
 }
 _CMP = re.compile(r"^\s*(?P<field>.+?)\s*(?P<op>>=|<=|!=|=|>|<)\s*(?P<value>.+?)\s*$")
 
@@ -63,14 +70,30 @@ def _yoy(qdf_json, prefix: str) -> float | None:
     return (now / then - 1) * 100 if now is not None and then not in (None, 0) and then > 0 else None
 
 
+def guidance_scores() -> dict[str, tuple[int, float]]:
+    """ticker -> (commitments graded, % of them delivered).
+
+    Only graded claims count: an ungraded promise is not evidence either way,
+    and counting it as a miss would punish a company for the app not having
+    got round to checking it yet.
+    """
+    rows = pf._q("SELECT ticker, COUNT(*) AS graded, "
+                 "SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) AS kept "
+                 "FROM guidance WHERE status IS NOT NULL AND status != '' AND status != 'Unclear' "
+                 "GROUP BY ticker")
+    return {r["ticker"]: (r["graded"], (r["kept"] or 0) / r["graded"] * 100)
+            for r in rows if r["graded"]}
+
+
 @st.cache_data(ttl=600, max_entries=4, show_spinner=False)
-def universe(_version: int) -> pd.DataFrame:
+def universe(version_key: int) -> pd.DataFrame:
     """One row per analysed company, from its newest saved analysis."""
     rows = pf._q("SELECT r.ticker, json_extract(r.snapshot, '$.company_name') AS name, "
                  "json_extract(r.snapshot, '$.metrics') AS metrics, json_extract(r.snapshot, '$.sector') AS sector, "
                  "json_extract(r.snapshot, '$.ai_verdict') AS verdict, json_extract(r.snapshot, '$.quarterly_df') AS q, "
                  "r.ts FROM runs r JOIN (SELECT ticker, MAX(ts) AS ts FROM runs GROUP BY ticker) m "
                  "ON r.ticker = m.ticker AND r.ts = m.ts")
+    promises = guidance_scores()
     out = []
     for r in rows:
         m = json.loads(r["metrics"] or "{}")
@@ -88,12 +111,18 @@ def universe(_version: int) -> pd.DataFrame:
                     "ROCE": _num(m.get("ROCE")), "ROE": _num(m.get("ROE")),
                     "Sales Growth": _yoy(q, "sales") or _yoy(q, "revenue"), "Profit Growth": _yoy(q, "net profit"),
                     "OPM": opm, "Face Value": _num(m.get("Face Value")),
-                    "Sector": r["sector"] or "", "Verdict": r["verdict"] or "", "Analysed": pd.to_datetime(r["ts"], unit="s")})
+                    "Sector": r["sector"] or "", "Verdict": r["verdict"] or "",
+                    "Guidance Checked": promises.get(r["ticker"], (None, None))[0],
+                    "Guidance Score": promises.get(r["ticker"], (None, None))[1],
+                    "Analysed": pd.to_datetime(r["ts"], unit="s")})
     return pd.DataFrame(out)
 
 
 def version() -> int:
-    return pf._q("SELECT COALESCE(MAX(id), 0) AS v FROM runs")[0]["v"]
+    """Changes whenever anything the screener reads changes -- a new analysis
+    or a newly graded promise, which does not create a run of its own."""
+    return pf._q("SELECT (SELECT COALESCE(MAX(id), 0) FROM runs) + "
+                 "(SELECT COUNT(*) FROM guidance WHERE status IS NOT NULL) AS v")[0]["v"]
 
 
 def _field(text: str) -> str | None:

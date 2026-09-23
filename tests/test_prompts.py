@@ -28,6 +28,7 @@ import archive  # noqa: E402
 
 # Before anything imports the real database: evals must not pollute the
 # user's saved analyses or their spend ledger.
+_REAL_DB = archive.DB_PATH
 _tmp = tempfile.TemporaryDirectory()
 archive.DB_PATH = Path(_tmp.name) / "eval.db"
 archive._has_fts = None
@@ -303,8 +304,36 @@ def offline_checks():
     print("ok: verdict rules and reply parsing (no model needed)")
 
 
+def run_live() -> tuple[int, int]:
+    """Against whatever provider Settings actually points at.
+
+    Opt-in with --live, because this one spends real money on a paid key.
+    It is also the only path that writes to the real spend ledger: the
+    charge happened, so the app's own "what did this cost" must show it.
+    """
+    import importlib
+    archive.DB_PATH = _REAL_DB
+    importlib.reload(cfg)
+    s = cfg.load()
+    s["ai"]["temperature"] = 0.0
+    print(f"\n{'=' * 90}\n  LIVE: {s['ai']['provider']} · {s['ai']['model']}\n{'=' * 90}")
+    rep = Report(f"{s['ai']['provider']}/{s['ai']['model']}")
+    for case in CASES:
+        check_analyze(case, s, rep)
+    for fixture in (NEWS_BAD, NEWS_GOOD):
+        check_news(fixture, s, rep)
+    check_guidance(s, rep)
+    check_retrieval(s, rep)
+    rep.rows.sort(key=lambda r: r[0])
+    return rep.show()
+
+
 if __name__ == "__main__":
     offline_checks()
+    if "--live" in sys.argv:
+        ok, n = run_live()
+        print(f"\n{'=' * 90}\nTOTAL {ok}/{n}")
+        sys.exit(0)
     have = installed()
     if not have:
         print("Ollama is not running at localhost:11434 — start it, or `ollama pull qwen2.5:0.5b`.")
