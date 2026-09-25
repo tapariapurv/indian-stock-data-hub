@@ -23,6 +23,11 @@ sys.path.insert(0, str(ROOT))
 APP = str(ROOT / "app.py")
 
 import portfolio as _pf  # noqa: E402
+import ui as _ui  # noqa: E402
+
+# "3th percentile" once reached the Stock page.
+assert [_ui.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 42.4, 100)] == \
+    ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "42nd", "100th"]
 
 # Offline: no price lookups, and no background refresher analysing the
 # seeded holdings over the network the moment the app starts.

@@ -160,7 +160,7 @@ if band:
                   delta_color="inverse")
         with b2:
             st.markdown(
-                f"**{band['percentile']:.0f}th percentile** of its own {band['years']:g}-year range "
+                f"**{ui.ordinal(band['percentile'])} percentile** of its own {band['years']:g}-year range "
                 + (":green[· cheaper than usual]" if cheap else
                    ":red[· dearer than usual]" if dear else ":gray[· around its usual level]"))
             st.progress(min(max(band["percentile"] / 100, 0.0), 1.0))

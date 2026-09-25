@@ -165,8 +165,8 @@ with tab_spend:
 
     if state["cost_cap"]:
         st.progress(min(1.0, month["cost"] / state["cost_cap"]),
-                    text=f"{cfg.money(s, month['cost'])} of {cfg.money(s, state['cost_cap'])} "
-                         f"this month ({state['cost_pct']:.0f}%)")
+                    text=(f"{cfg.money(s, month['cost'])} of {cfg.money(s, state['cost_cap'])} "
+                          f"this month ({state['cost_pct']:.0f}%)").replace("$", r"\$"))  # $…$ is LaTeX
     if state["token_cap"]:
         st.progress(min(1.0, month["tokens"] / state["token_cap"]),
                     text=f"{month['tokens']:,} of {state['token_cap']:,} tokens "

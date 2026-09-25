@@ -184,7 +184,7 @@ with st.container(border=True):
         st.markdown("**:material/trending_up: Movers today**")
         for _, r in moves.sort_values("Day %", ascending=False).head(3).iterrows():
             st.markdown(f"{r['ticker']} &nbsp; {signed(r['Day %'], '{:+.2f}%')}")
-        for _, r in moves.sort_values("Day %").head(3 if len(moves) > 3 else 0).iterrows():
+        for _, r in moves.sort_values("Day %").head(min(3, max(len(moves) - 3, 0))).iterrows():  # never repeat a top mover
             st.markdown(f"{r['ticker']} &nbsp; {signed(r['Day %'], '{:+.2f}%')}")
     with o2:
         st.markdown("**:material/psychology: AI verdicts**")

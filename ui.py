@@ -524,3 +524,9 @@ def result_tabs(results: list[dict], settings: dict, run_settings: dict, run_sta
                         st.caption("No PDF / BSE / NSE document links found on this page.")
 
     return {name: tabs[name] for name in extra}
+
+
+def ordinal(n: float) -> str:
+    """42 -> "42nd", 13 -> "13th"."""
+    n = round(n)
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
