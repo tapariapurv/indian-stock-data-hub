@@ -20,7 +20,7 @@ Everything it downloads stays on your machine: filings are parsed once, searchab
 Plenty of sites show you a company's numbers. These three things come from the app keeping its own archive:
 
 - **Promise vs delivery.** Every quarter management commits to something on the earnings call — margins, growth, capex. The app pulls those commitments out of the transcript, files them, and grades them against the numbers actually reported later. Over eight quarters you get something no screener will tell you: how often this management does what it says.
-- **Ask your own filings, in plain English.** Every transcript, presentation and annual report you download is indexed, and **Ask AI** reasons over it: when your words don't match the filing's, the model supplies the ones that would (ask about "capex" and it adds *capital expenditure*, *capital allocation*), the database retrieves, the model throws out the coincidental matches — "share capital" is not capital expenditure — and answers from what's left, citing every figure. It sees your portfolio and your saved analyses too, so "which of my holdings looks weakest?" is a fair question.
+- **Ask your own filings, in plain English.** Every transcript, presentation and annual report you download is indexed, and **Ask AI** reasons over it: when your words don't match the filing's, the model supplies the ones that would (ask about "capex" and it adds *capital expenditure*, *capital allocation*), the database retrieves, the model throws out the coincidental matches — "share capital" is not capital expenditure — and answers from what's left, citing every figure. It sees your portfolio and your saved analyses too, so "which of my holdings looks weakest?" is a fair question. The model you chose in Settings is always given its full timeout to answer; if another has to stand in, the answer says which one did.
 - **What changed since last time.** Each analysis is saved. Run a company again and the app lists what moved: ratios, strengths and risks, new filings, new headlines, a changed verdict. Plain comparison, no model, so nothing is invented.
 
 ## Features
@@ -35,7 +35,7 @@ Plenty of sites show you a company's numbers. These three things come from the a
 - **Batch analysis:** upload a CSV or Excel watchlist and analyse the whole list in one run.
 - **Your actual trades:** log buys and sells and the app works out what you still hold, the average cost of it, realised gains matched first-in first-out, the short/long term split at twelve months, and a money-weighted return (XIRR). It deliberately stops short of computing tax owed — rates change, and a stale rate table is worse than none.
 - **Valuation in context:** a company's P/E against its own five-year range, so "P/E 43" becomes "43, and the 42nd percentile of its own history".
-- **Light enough to leave running:** under 250 MB with every page open, under 200 MB in lean mode. A Performance tab shows what it is using, and every cache, the background refresher and the chart preloading can be turned down or off. It can start itself when you log in, on macOS, Windows and Linux.
+- **Light enough to leave running:** under 250 MB with every page open, under 200 MB in lean mode. A Performance tab shows what it is using, and every cache, the background refresher and the chart preloading can be turned down or off. Filings are parsed in separate, low-priority processes held to a CPU share and memory ceiling you set, so the app stays quick to click while an analysis runs. It can start itself when you log in, on macOS, Windows and Linux.
 - **Saved history:** reopen any past analysis, chart a ratio across months, and control exactly how long anything is kept. Every saved run lists the filings behind it — the file on disk, the pages its figures came from, and a link to the original — and each metric carries the exact pages it appeared on.
 - **Reports:** an Excel workbook (overview dashboard with live formulas, a sheet per company with a chart, an **All numbers** sheet and every figure in a filterable table) and an A4 Word report with clickable links.
 - **Token-frugal:** the model sees only clean, structured data, replies are length-capped, and answers are cached — re-running costs nothing, and every run reports exactly how many tokens it used.
@@ -169,7 +169,7 @@ flowchart LR
 | Page | What it's for |
 |---|---|
 | **Portfolio** | Accounts, live value and P&L, allocation limits, alerts, the weekly digest — and **Trades**, where realised gains and a money-weighted return come from what you actually bought and sold. |
-| **Stock** | One company: candlestick chart, upcoming events, its P/E against its own five-year range, and every analysis ever saved for it. |
+| **Stock** | One company: candlestick chart, upcoming events, its P/E against its own five-year range, the same tabs as Research (overview, financials, all numbers, what changed, guidance, filings) for its latest analysis, and every analysis ever saved for it. |
 | **Screener** | Filter every analysed company with a screener.in-style query, including how often its management kept its word. |
 | **Compare** | Put analysed companies side by side. |
 | **Research** | Run an analysis; read it across Overview, Financials, All numbers, What changed, Guidance and Filings. |
@@ -188,7 +188,7 @@ Almost everything is set from **Settings** inside the app and stored in `setting
 | Data & scraping | Default tickers and filing types, size and page limits, parallel downloads, politeness delay, news window, feature switches |
 | Appearance | Accent colour, text size, spacing, chart colours, table height, decimals, sparklines, which tabs appear and in what order |
 | Storage & history | How long to keep saved analyses, filing PDFs and searchable text; per-company caps; automatic clear-out |
-| Performance | Background work on/off, chart preloading, cache sizes, refresh interval, parallel downloads, lean mode, start at login |
+| Performance | Background work on/off, chart preloading, cache sizes, refresh interval, parallel downloads, CPU and memory limits for analysis, lean mode, start at login |
 
 A few things are still set at launch:
 
@@ -248,6 +248,7 @@ Set any limit to 0 to keep it forever. The clear-out runs at startup, on demand,
     ├── test_portfolio.py   # FIFO gains, XIRR, the P/E band, cache keys
     ├── test_screener.py    # query parsing and the guidance score
     ├── test_runtime.py     # memory reporting and the autostart files
+    ├── test_performance.py # analysis stays off the UI and inside the CPU/memory limits
     ├── test_ask.py         # the Ask AI chat end to end (needs Ollama)
     ├── test_prompts.py     # scores the prompts against a real model (needs Ollama)
     └── test_app_smoke.py   # every page and tab renders
@@ -264,6 +265,7 @@ python tests/test_providers.py
 python tests/test_portfolio.py
 python tests/test_screener.py
 python tests/test_runtime.py
+python tests/test_performance.py
 python tests/test_app_smoke.py
 ```
 
@@ -276,7 +278,7 @@ python tests/test_ask.py                # the Ask AI chat, end to end
 
 Both take `--live` to run against the provider you have configured instead, which spends real money on a paid key. `test_ask.py --context` checks the retrieval without needing any model at all.
 
-`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it renders every page and tab, and checks the Trades page agrees with the maths.
+`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_performance.py` parses the bundled user guide in the worker processes and checks that the server stays responsive meanwhile, that the CPU limit actually slows the parse, that a new parse waits while the app is over its memory limit (and gives up after two minutes), and that a local Ollama model is given no more threads than the limit allows. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it renders every page and tab, and checks the Trades page agrees with the maths.
 
 `test_ask.py` drives the whole Ask AI chat: that what is streamed matches what is stored, that the follow-up marker never reaches the screen, that it cites only sources that exist, that scope and the filings toggle work, and that it says so rather than inventing when the archive has nothing. `test_prompts.py` is different: it scores the prompts against a real model rather than asserting the code ran. It is how the verdict, sentiment and guidance-grading bugs were found. It runs on local Ollama only and redirects the database, so it never touches your archive or spend ledger; `--live` opts in to the provider you have configured and will spend real money on a paid key.
 

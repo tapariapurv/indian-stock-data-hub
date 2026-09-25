@@ -471,6 +471,7 @@ source .venv/bin/activate</code></pre></div>
   <div class="note">
     <b>Read it as a question, not an answer.</b> It compares a company only with its own past, never with its peers, and a company can be re-rated for perfectly good reasons — or stay cheap for perfectly bad ones. A loss-making period has no meaningful P/E, so nothing is shown at all.
   </div>
+  <p>Below it, the latest analysis opens in <b>the same tabs as the Research page</b> — Overview, Financials, All numbers, What changed, Guidance and Filings — so everything you can read about a company you just researched, you can read about one you hold, without running it again. <b>What changed</b> compares the two most recent analyses, and an extra <b>Analysis history</b> tab lists every run with its verdict.</p>
 </section>
 
 <section class="chapter">
@@ -577,8 +578,12 @@ ROCE &gt; 20 AND Sales Growth &gt; 15 OR Sector = Banks</code></pre>
   <ul>
     <li><b>Numbered source chips.</b> Click any one to see exactly what it was: a portfolio row, an analysis and its date, or a filing with the file on disk and the page number. Every company-specific claim in the answer carries a <code>[2]</code> pointing at one of them.</li>
     <li><b>Three follow-up questions</b>, which come back in the same model call as the answer — so a turn costs one request, not two.</li>
-    <li><b>A line naming the model</b>, how long it took and how many sources it used. If your chosen model was busy and another stood in, it says so there.</li>
+    <li><b>A line naming the model</b>, how long it took and how many sources it used. If another model had to stand in, it says so there — for example <i>"gemma4:e2b · stood in for gemma-4-31b-it, which was busy or too slow to start"</i>.</li>
   </ul>
+
+  <div class="note">
+    <b>The model you chose is never hurried.</b> Some large models take 20 seconds or more just to start writing. The model picked in Settings always gets its full request timeout (<b>Settings → Models &amp; keys</b>) and is never set aside for being slow; only the stand-ins are held to a quick start. If answers keep coming from a stand-in, your chosen model is erroring or running past that timeout — use <b>Test connection</b>.
+  </div>
 
   <h3>Keeping it honest</h3>
   <p>The assistant is told to answer from the sources, cite each company fact, copy figures exactly with their units, and say plainly when the sources do not cover something. It may add general market or accounting knowledge — how a ratio is defined, what a term means — but it has to label that as general knowledge, and it must never invent a company figure.</p>
@@ -719,7 +724,7 @@ python -m streamlit run app.py</code></pre></div>
   <p class="intro">This app is meant to sit in the background — watching prices, re-analysing what you hold, building a digest once a week. So it is built to be something you can forget about: comfortably under 500 MB of memory, and entirely under your control.</p>
 
   <h3>What it actually uses</h3>
-  <p><b>Settings → Performance</b> shows the memory this session is using, right now, and warns you if it goes past 500 MB. For reference, with every page opened it sits around 230 MB, and about 190 MB in lean mode. Most of that is Python itself plus the two libraries the app is built on; the app's own data is a small fraction.</p>
+  <p><b>Settings → Performance</b> shows the memory in use right now — the app plus any filing it is parsing at that moment — and warns you if it goes past 500 MB. For reference, with every page opened it sits around 230 MB, and about 190 MB in lean mode. Most of that is Python itself plus the two libraries the app is built on; the app's own data is a small fraction.</p>
 
   <h3>The switches</h3>
   <table>
@@ -732,7 +737,12 @@ python -m streamlit run app.py</code></pre></div>
     <tr><td><b>Let Ask AI rank passages</b></td><td>The model picks which retrieved passages actually answer your question, instead of trusting the keyword order — "share capital" is not capital expenditure. One extra request per question: a few seconds locally, longer on a hosted provider.</td></tr>
     <tr><td><b>Re-analyse each held stock every…</b></td><td>How often background analysis runs. 0 analyses a stock once, when you add it, and never again.</td></tr>
     <tr><td><b>Filings downloaded at once</b></td><td>Faster, but heavier — and less polite to the site being read.</td></tr>
+    <tr><td><b>CPU the analysis may use</b></td><td>The share of your computer's processor that parsing filings may take (default 50%). Lower means a slower analysis and a cooler, quieter machine; clicks in the app are never slowed. It also caps how many threads a local Ollama model may use — at 100% Ollama decides for itself.</td></tr>
+    <tr><td><b>Memory limit (MB)</b></td><td>A ceiling for the app and its parse workers together (default 2,048 MB). Over it, the next filing waits for memory to free up before it is parsed. 0 means no limit.</td></tr>
   </table>
+  <div class="note good">
+    <b>Why pages stay quick during an analysis.</b> Reading a large annual report is heavy work. The app does it in separate, low-priority processes — one fresh process per filing, which hands its memory back the moment it finishes — so the page you are on keeps responding instead of freezing for several seconds. The CPU and memory limits apply from the next filing parsed.
+  </div>
   <p>The cache sizes take effect when the app restarts. <b>Free memory now</b> drops everything held in memory immediately; nothing is lost, it is simply fetched or recomputed next time it is needed.</p>
   <div class="note good">
     <b>The app is already careful about the expensive things.</b> A filing is parsed once ever and the result cached by file hash. The PDF reader — about 22 MB — is only loaded when a PDF is actually opened, so a session that never runs an analysis never pays for it. Model answers are cached, so re-running a company costs nothing.
@@ -772,6 +782,7 @@ python -m streamlit run app.py</code></pre></div>
     <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 17). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
     <tr><td>A filing says <em>Skipped</em></td><td>It was over 25 MB, or the link led to a web page rather than a PDF. The rest of the analysis is unaffected.</td></tr>
     <tr><td>"No news in the last 14 days"</td><td>Normal for smaller companies. The news sources simply had nothing that named the company.</td></tr>
+    <tr><td>An analysis is slower than it used to be</td><td>Check <b>Settings → Performance → CPU the analysis may use</b> and the memory limit. A low CPU share, or a memory limit the app is already near, makes filings wait. Raise either; the app's own pages are unaffected either way.</td></tr>
     <tr><td>Numbers look out of date</td><td>Results are reused for an hour. Use <strong>⋮ → Clear cache</strong>, then run again.</td></tr>
   </table>
   <h3>Local AI</h3>
@@ -780,6 +791,7 @@ python -m streamlit run app.py</code></pre></div>
     <tr><td>Sidebar says <strong>Ollama not detected</strong></td><td>Start Ollama (open the app, or run <code>ollama serve</code>), then refresh the page. Check <a href="http://localhost:11434">localhost:11434</a> says <em>Ollama is running</em>.</td></tr>
     <tr><td>Connected, but the model list is empty</td><td>No model has been downloaded yet. Run <code>ollama pull &lt;name&gt;</code> with a model from ollama.com/library that fits your RAM (chapter 4, route A), then press <strong>Test connection</strong> again.</td></tr>
     <tr><td>"… returned no summary for this ticker"</td><td>Update Ollama to the latest version (0.9 or newer is required), or pick another model from the list.</td></tr>
+    <tr><td>Ask AI answers from a different model than the one you chose</td><td>The line under the answer names the stand-in. Your chosen model was unreachable, returned an error, or ran past the request timeout. Press <b>Test connection</b> in <b>Settings → Models &amp; keys</b>, and raise the timeout there if it is a large, slow model.</td></tr>
     <tr><td>The first AI answer is slow</td><td>The model is loading into memory, which can take 10 to 30 seconds. Later answers take a second or two.</td></tr>
     <tr><td>Computer slows down</td><td>The model is too large for your RAM. Choose a smaller one. <code>ollama list</code> shows installed models; <code>ollama rm &lt;name&gt;</code> removes one.</td></tr>
   </table>
