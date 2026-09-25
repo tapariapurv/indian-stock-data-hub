@@ -38,7 +38,8 @@ sid = held[ticker]["screener_id"]
 # --- Header --------------------------------------------------------------------
 quote = pf.quotes(((ticker, sid),)).get(ticker)
 runs = archive.list_runs(ticker, limit=200)
-latest = core.restore_snapshot(archive.get_run(runs[0]["id"])["snapshot"]) if runs else None
+latest_run = archive.get_run(runs[0]["id"]) if runs else None
+latest = core.restore_snapshot(latest_run["snapshot"]) if runs else None
 
 with st.container(horizontal=True, vertical_alignment="center"):
     st.markdown(f"# {ticker}", width="content")
@@ -145,54 +146,39 @@ if not latest:
     st.stop()
 
 # --- The analysis --------------------------------------------------------------
-tab_over, tab_fin, tab_news, tab_docs, tab_hist = st.tabs(
-    [":material/dashboard: Overview", ":material/bar_chart: Financials", ":material/newspaper: News",
-     ":material/folder_open: Filings", ":material/history: Analysis history"])
+# Where today's P/E sits in the company's own history. Shown only when
+# there is enough of it, and silent for a loss-making company where a
+# P/E means nothing.
+band = pf.pe_position(pf.pe_history(sid, pf.day_slot()))
+if band:
+    cheap = band["percentile"] <= 35
+    dear = band["percentile"] >= 75
+    with st.container(border=True):
+        b1, b2 = st.columns([1, 2.2], vertical_alignment="center")
+        b1.metric("P/E now", f"{band['now']:,.1f}",
+                  f"{band['now'] - band['median']:+.1f} vs its median", border=False,
+                  delta_color="inverse")
+        with b2:
+            st.markdown(
+                f"**{band['percentile']:.0f}th percentile** of its own {band['years']:g}-year range "
+                + (":green[· cheaper than usual]" if cheap else
+                   ":red[· dearer than usual]" if dear else ":gray[· around its usual level]"))
+            st.progress(min(max(band["percentile"] / 100, 0.0), 1.0))
+            st.caption(f"Low {band['low']:,.1f} · median {band['median']:,.1f} · "
+                       f"high {band['high']:,.1f}. Against its own past only — not against "
+                       f"its peers, and a re-rating can be deserved.")
 
-with tab_over:
-    st.caption(f"Latest analysis: {datetime.fromtimestamp(runs[0]['ts']).strftime('%d %b %Y, %H:%M')}")
-    # Where today's P/E sits in the company's own history. Shown only when
-    # there is enough of it, and silent for a loss-making company where a
-    # P/E means nothing.
-    band = pf.pe_position(pf.pe_history(sid, pf.day_slot()))
-    if band:
-        cheap = band["percentile"] <= 35
-        dear = band["percentile"] >= 75
-        with st.container(border=True):
-            b1, b2 = st.columns([1, 2.2], vertical_alignment="center")
-            b1.metric("P/E now", f"{band['now']:,.1f}",
-                      f"{band['now'] - band['median']:+.1f} vs its median", border=False,
-                      delta_color="inverse")
-            with b2:
-                st.markdown(
-                    f"**{band['percentile']:.0f}th percentile** of its own {band['years']:g}-year range "
-                    + (":green[· cheaper than usual]" if cheap else
-                       ":red[· dearer than usual]" if dear else ":gray[· around its usual level]"))
-                st.progress(min(max(band["percentile"] / 100, 0.0), 1.0))
-                st.caption(f"Low {band['low']:,.1f} · median {band['median']:,.1f} · "
-                           f"high {band['high']:,.1f}. Against its own past only — not against "
-                           f"its peers, and a re-rating can be deserved.")
-    ui.company_card(latest, show_news=False)
-
-with tab_fin:
-    for key, title in [("quarterly_df", "Quarterly results")] + core.STATEMENT_TABLES:
-        if latest.get(key) is not None:
-            st.markdown(f"**{title}**")
-            st.dataframe(ui.as_text(latest[key]), hide_index=True)
-    if latest.get("correlated") is not None:
-        st.markdown("**Every figure, lined up**")
-        ui.correlated_table(latest["correlated"], settings, key="stock_corr")
-
-with tab_news:
-    ui.news_block(latest)
-
-with tab_docs:
-    ui.sources_table(latest.get("sources") or [], key="stock_sources")
-    docs = latest.get("documents") or []
-    if docs:
-        st.markdown("**All filings listed on screener.in**")
-        st.dataframe(pd.DataFrame(docs)[["category", "text", "url"]], hide_index=True,
-                     column_config={"url": st.column_config.LinkColumn("Link", display_text="Open")})
+# The same view as the Research page. A saved analysis keeps its figures in
+# the archive, not in the snapshot, so they are looked up by filing.
+latest["figures"] = [f for d in (latest.get("downloaded") or {}).values() for doc in d
+                     if doc.get("path") for f in archive.cached_figures(doc["path"], "path") or []]
+if len(runs) > 1:
+    previous = archive.get_run(runs[1]["id"])
+    latest["previous_at"] = previous["ts"]
+    latest["changes"] = archive.diff_snapshots(previous["snapshot"], latest_run["snapshot"])
+st.caption(f"Latest analysis: {datetime.fromtimestamp(runs[0]['ts']).strftime('%d %b %Y, %H:%M')}")
+tab_hist = ui.result_tabs([latest], settings, settings, runs[0]["ts"],
+                          extra={"Analysis history": ":material/history:"})["Analysis history"]
 
 with tab_hist:
     verdicts = pf._q("SELECT id, ts, label, json_extract(snapshot, '$.ai_verdict') AS verdict, "

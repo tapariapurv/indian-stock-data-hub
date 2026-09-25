@@ -64,6 +64,26 @@ def memory_mb() -> float:
     return 0.0
 
 
+def live_memory_mb() -> float:
+    """Memory in use right now by this process and its parse workers, in MB.
+
+    memory_mb() is a peak and never goes down, so it cannot enforce a limit.
+    Asks `ps` (macOS and Linux); 0.0 where it cannot, which disables the limit
+    rather than stalling on a wrong number.
+    """
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,rss="], capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0.0
+    rows = [tuple(map(int, line.split())) for line in out.splitlines() if len(line.split()) == 3]
+    ours = {os.getpid()}
+    for _ in range(3):  # this process, its workers, and anything they started
+        ours |= {pid for pid, ppid, _ in rows if ppid in ours}
+    total = sum(rss for pid, _, rss in rows if pid in ours)
+    return total / 1024
+
+
 # --------------------------------------------------------------------------
 # Starting with the computer
 # --------------------------------------------------------------------------

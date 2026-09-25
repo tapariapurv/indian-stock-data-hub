@@ -110,6 +110,12 @@ DEFAULTS = {
         # Ask AI: let the model choose which retrieved passages to read.
         # Better answers on a large archive, one more request per question.
         "rank_passages": True,
+        # Ceilings for analysis work. Filings are parsed in separate low-priority
+        # processes using at most this share of the machine's CPU; past the
+        # memory limit (this app plus its workers) new parses wait. Clicks are
+        # never throttled -- only analysis slows down. 0 MB = no memory limit.
+        "cpu_limit_pct": 50,
+        "ram_limit_mb": 2048,
     },
     # Where alerts and the weekly digest go: "mac" (a macOS notification) and/or
     # "email" (sent by your own Google Apps Script web app, to you only).

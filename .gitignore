@@ -21,3 +21,6 @@ settings.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# The autostart LaunchAgent's log
+autostart.log

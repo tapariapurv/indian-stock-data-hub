@@ -128,11 +128,13 @@ def file_sha(path: Path) -> str:
 # Extraction cache + page index
 # --------------------------------------------------------------------------
 
-def cached_figures(sha: str) -> list[dict] | None:
-    """Figures for an already-parsed file, or None if it has never been seen."""
+def cached_figures(sha: str, column: str = "sha") -> list[dict] | None:
+    """Figures for an already-parsed file, or None if it has never been seen.
+    column="path" finds it by where it is saved instead of by its hash."""
     init()
     with connect() as conn:
-        row = conn.execute("SELECT id FROM documents WHERE sha=?", (sha,)).fetchone()
+        row = conn.execute(f"SELECT id FROM documents WHERE {'path' if column == 'path' else 'sha'}=?",
+                           (sha,)).fetchone()
         if row is None:
             return None
         rows = conn.execute(

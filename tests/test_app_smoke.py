@@ -135,11 +135,22 @@ assert _metrics["Realised gain"] == "₹8,958", _metrics
 print(f"ok: portfolio renders with trades, and the page agrees with the maths "
       f"({_metrics['Realised gain']} realised)")
 
-# The stock page renders for a held stock, not just an empty portfolio.
+# The stock page renders for a held stock, not just an empty portfolio --
+# with its saved analyses shown the way the Research page shows a fresh one.
+import core as _core  # noqa: E402
+
+_ar.store_document("sha-a", "DEMO", "Annual Report", "a.pdf", result["figures"], [])
+_core.save_run(result, label="smoke")
+_core.save_run({**result, "ai_verdict": "Negative"}, label="smoke")
 stock = AppTest.from_file(APP, default_timeout=120).run()
 stock.session_state["stock"] = "DEMO"
 stock.switch_page("app_pages/stock.py").run()
 assert not stock.exception, [e.value for e in stock.exception]
-print("ok: the stock page renders for a held stock")
+labels = [t.label for t in stock.tabs]
+for name in ("Overview", "Financials", "All numbers", "Filings", "Analysis history"):
+    assert any(name in label for label in labels), f"stock page lacks the Research tab {name!r}: {labels}"
+shown = {m.label: m.value for m in stock.metric}
+assert shown.get("Figures from filings") == "1", f"saved figures not found by filing: {shown}"
+print("ok: the stock page renders a held stock with the Research page's tabs and figures")
 
 _tmp.cleanup()

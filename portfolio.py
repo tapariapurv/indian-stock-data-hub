@@ -50,7 +50,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # feature existed (holding the old settings module) still works.
 DEFAULTS = {"refresh_hours": 24, "track_positions": True, "max_stock_pct": 20, "max_sector_pct": 35}
 PERF_DEFAULTS = {"background_refresh": True, "warm_charts": True, "chart_cache": 8,
-                 "quote_cache": 200, "search_cache": 500, "rank_passages": True}
+                 "quote_cache": 200, "search_cache": 500, "rank_passages": True,
+                 "cpu_limit_pct": 50, "ram_limit_mb": 2048}
 
 
 def prefs(settings: dict) -> dict:

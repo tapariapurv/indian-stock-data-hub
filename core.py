@@ -10,16 +10,19 @@ re-analysed.
 """
 
 import base64
+import gc
 import hashlib
 import io
 import json
+import math
+import multiprocessing
 import zlib
 import os
 import random
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from importlib.util import find_spec
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -80,6 +83,17 @@ def apply_settings(s: dict) -> None:
     REQUEST_TIMEOUT, DOWNLOAD_TIMEOUT = d["request_timeout"], d["download_timeout"]
     MAX_FILE_MB, MAX_PDF_PAGES_SCANNED = d["max_file_mb"], d["max_pdf_pages"]
     NEWS_MAX_AGE_DAYS, NEWS_MAX_ITEMS = d["news_days"], d["news_items"]
+    PARSE_LIMITS.update(parse_limits(s))
+
+
+def parse_limits(s: dict) -> dict:
+    """How many parse workers, what share of a core each may use, and the
+    memory ceiling -- from the CPU and memory limits on the Settings page."""
+    p = s.get("performance") or {}
+    cores = (os.cpu_count() or 1) * min(max(float(p.get("cpu_limit_pct", 50)), 1), 100) / 100
+    workers = max(1, min(math.ceil(cores), int(s["data"]["doc_workers"])))
+    return {"workers": workers, "duty": min(cores / workers, 1.0),
+            "ram_mb": float(p.get("ram_limit_mb", 0) or 0)}
 
 
 # News sources, all verified live 19 Sep 2026. Search feeds are per-company;
@@ -355,7 +369,10 @@ def extract_all_numbers(pdf_path: Path, source_category: str = "",
     try:
         with pdfplumber.open(pdf_path) as pdf:
             for page_num, page in enumerate(pdf.pages[:MAX_PDF_PAGES_SCANNED], start=1):
+                started = time.perf_counter()
                 text = page.extract_text() or ""
+                if _DUTY < 1:  # stay inside the CPU limit: rest in proportion to the work
+                    time.sleep((time.perf_counter() - started) * (1 / _DUTY - 1))
                 page.close()  # drop this page's parsed layout now, not when the whole PDF closes
                 if pages_out is not None:
                     pages_out.append((page_num, text))
@@ -568,10 +585,67 @@ def _extract_table(soup, selector_id) -> pd.DataFrame | None:
 # PDF extraction, cached in the archive by file hash
 # --------------------------------------------------------------------------
 
-# Parsing is pure Python, so the GIL runs one parse at a time anyway: parallel
-# parses only multiplied memory (~200 MB per annual report) and thrashed.
-# Downloads stay parallel; each file is parsed as soon as the parser is free.
-_PARSE_LOCK = threading.Lock()
+# Parsing is pure Python. Run inside the server it holds the GIL, and every
+# click on every page waits behind it: a page that renders in 0.05 s took
+# 5-15 s during a parse. So filings are parsed in worker processes, each with
+# its own GIL, at low OS priority, inside the CPU and memory limits set on the
+# Settings page. Downloads stay parallel threads here.
+PARSE_LIMITS = parse_limits(_S)  # refreshed by apply_settings() before every run
+_DUTY = 1.0  # share of a core this process may parse with; set in each worker
+_POOL, _POOL_KEY, _POOL_LOCK = None, None, threading.Lock()
+
+
+def _init_parse_worker(duty: float, max_pages: int) -> None:
+    global _DUTY, MAX_PDF_PAGES_SCANNED
+    _DUTY, MAX_PDF_PAGES_SCANNED = duty, max_pages
+    try:
+        os.nice(10)  # the machine, and this app's own pages, always come first
+    except (AttributeError, OSError):
+        pass  # Windows
+
+
+def _parse_job(path: Path, category: str) -> tuple[list[dict], list[tuple[int, str]]]:
+    pages: list[tuple[int, str]] = []
+    return extract_all_numbers(path, source_category=category, pages_out=pages), pages
+
+
+def _parse_pool() -> ProcessPoolExecutor:
+    """One pool per set of limits; rebuilt when the limits change."""
+    global _POOL, _POOL_KEY
+    key = (PARSE_LIMITS["workers"], PARSE_LIMITS["duty"], MAX_PDF_PAGES_SCANNED)
+    with _POOL_LOCK:
+        if _POOL is None or _POOL_KEY != key:
+            if _POOL is not None:
+                _POOL.shutdown(wait=False)
+            # A fresh process per filing hands its memory (~200 MB for an
+            # annual report) straight back; the ~1 s start-up is small beside a parse.
+            _POOL = ProcessPoolExecutor(key[0], mp_context=multiprocessing.get_context("spawn"),
+                                        initializer=_init_parse_worker, initargs=(key[1], key[2]),
+                                        max_tasks_per_child=1)
+            _POOL_KEY = key
+        return _POOL
+
+
+def _wait_for_memory() -> None:
+    """Hold a new parse while the app is over its memory limit.
+    ponytail: gives up after 2 min, so a server already over the limit on its
+    own cannot stall analysis forever; parallel parses can overshoot briefly."""
+    import runtime
+    cap, deadline = PARSE_LIMITS["ram_mb"], time.time() + 120
+    while cap and time.time() < deadline and runtime.live_memory_mb() > cap:
+        gc.collect()
+        time.sleep(2)
+
+
+def parse_filing(path: Path, category: str) -> tuple[list[dict], list[tuple[int, str]]]:
+    """(figures, page texts) for one PDF, parsed off the server process."""
+    _wait_for_memory()
+    try:
+        return _parse_pool().submit(_parse_job, path, category).result()
+    except Exception:  # a broken pool must not fail the run: parse here instead
+        global _POOL_KEY
+        _POOL_KEY = None
+        return _parse_job(path, category)
 
 
 def extract_and_index(path: Path, ticker: str, category: str) -> list[dict]:
@@ -586,15 +660,13 @@ def extract_and_index(path: Path, ticker: str, category: str) -> list[dict]:
     try:
         sha = archive.file_sha(path)
     except OSError:
-        return extract_all_numbers(path, source_category=category)
+        return parse_filing(path, category)[0]
 
     cached = archive.cached_figures(sha)
     if cached is not None:
         return cached
 
-    pages: list[tuple[int, str]] = []
-    with _PARSE_LOCK:
-        figures = extract_all_numbers(path, source_category=category, pages_out=pages)
+    figures, pages = parse_filing(path, category)
     for f in figures:
         f["Category"] = classify_figure_category(f["Label"])
     try:

@@ -12,6 +12,7 @@ company review at roughly 400 tokens on any provider.
 """
 
 import json
+import os
 import re
 import time
 
@@ -344,7 +345,7 @@ def _complete_once(prompt: str, max_tokens: int, settings: dict, kind: str = "ot
                       **({"system": system} if system else {}),
                       **({"format": "json"} if schema else {}),
                       "options": {"temperature": temperature, "num_predict": max_tokens,
-                                  "num_ctx": int(ai.get("num_ctx", 2048))}},
+                                  "num_ctx": int(ai.get("num_ctx", 2048)), **_cpu_threads(settings)}},
                 timeout=timeout))
             if resp.status_code != 200:
                 return _fail(resp)
@@ -1026,6 +1027,14 @@ def now() -> float:
     return time.time()
 
 
+
+def _cpu_threads(settings: dict) -> dict:
+    """Ollama's CPU threads, held to the app's CPU limit. Empty at 100%, so a
+    local model left unlimited keeps Ollama's own choice."""
+    pct = float((settings.get("performance") or {}).get("cpu_limit_pct", 100))
+    return {} if pct >= 100 else {"num_thread": max(1, round((os.cpu_count() or 1) * pct / 100))}
+
+
 def stream(messages: list[dict], system: str, max_tokens: int, settings: dict, kind: str = "Chat",
            patient: bool = True, first_by: float | None = None):
     """Yield the reply as it is written (see _stream); if nothing at all comes
@@ -1097,7 +1106,8 @@ def _stream(messages: list[dict], system: str, max_tokens: int, settings: dict, 
             body = {"model": model, "stream": True, "think": False,
                     "messages": [{"role": "system", "content": system}, *messages],
                     "options": {"temperature": temperature, "num_predict": max_tokens,
-                                "num_ctx": max(8192, int(ai.get("num_ctx", 2048)))}}
+                                "num_ctx": max(8192, int(ai.get("num_ctx", 2048))),
+                                **_cpu_threads(settings)}}
             with post(f"{base}/api/chat", json=body) as resp:
                 if resp.status_code != 200:
                     LAST_ERROR = f"HTTP {resp.status_code}: {resp.text[:150]}"

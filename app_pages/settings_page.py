@@ -517,12 +517,12 @@ with tab_perf:
     st.caption("This app is meant to sit in the background. Everything here trades speed for "
                "lightness — the defaults favour speed.")
 
-    used = runtime.memory_mb()
+    used = runtime.live_memory_mb() or runtime.memory_mb()
     live = pf.STATUS["running"]
     mem1, mem2, mem3 = st.columns(3)
     mem1.metric("Memory in use", f"{used:,.0f} MB" if used else "—", border=True,
-                help="Peak resident memory for this process since it started. The target this app "
-                     "is built to is under 500 MB while idle.")
+                help="Memory in use right now by this app and any filing it is parsing. The target "
+                     "this app is built to is under 500 MB while idle.")
     mem2.metric("Background work", "Running" if live else ("On" if p["background_refresh"] else "Off"),
                 f"analysing {live}" if live else None, border=True)
     mem3.metric("Stocks tracked", len(pf.tracked()), border=True)
@@ -566,13 +566,26 @@ with tab_perf:
     workers = r2.number_input("Filings downloaded at once", 1, 16, int(s["data"]["doc_workers"]),
                               help="More is faster but heavier, and less polite to the source site.")
 
+    st.markdown("**Limits for analysis work**")
+    st.caption(f"Filings are parsed in separate, low-priority processes, so pages stay quick while an "
+               f"analysis runs. These ceilings slow the analysis down instead of the computer "
+               f"(this one has {os.cpu_count() or 1} CPU cores). They apply to the next filing parsed.")
+    l1, l2 = st.columns(2)
+    cpu_limit = l1.slider("CPU the analysis may use", 5, 100, int(p["cpu_limit_pct"]), step=5,
+                          format="%d%%",
+                          help="Share of all CPU cores. Also caps how many threads a local Ollama "
+                               "model may use; at 100% Ollama picks for itself.")
+    ram_limit = l2.number_input("Memory limit (MB)", 0, 65536, int(p["ram_limit_mb"]), step=256,
+                                help="This app plus its parse workers. Over it, new filings wait "
+                                     "for memory to free up. 0 = no limit.")
+
     if st.button("Save performance settings", type="primary", icon=":material/save:"):
         s["performance"] = {
             "background_refresh": background,
             "warm_charts": False if lean else warm,
             "chart_cache": 4 if lean else int(chart_cache),
             "quote_cache": int(quote_cache), "search_cache": int(search_cache),
-            "rank_passages": rank}
+            "rank_passages": rank, "cpu_limit_pct": int(cpu_limit), "ram_limit_mb": int(ram_limit)}
         s["portfolio"] = {**s["portfolio"], "refresh_hours": int(refresh_hours)}
         s["data"]["doc_workers"] = int(workers)
         cfg.save(s)
