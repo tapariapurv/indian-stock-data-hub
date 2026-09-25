@@ -50,12 +50,28 @@ Plenty of sites show you a company's numbers. These three things come from the a
     <td align="center"><sub>Financials: latest quarter, trends and 13-quarter chart</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/archive-search.jpg" alt="Asking a question across every downloaded filing"></td>
+    <td><img src="docs/images/portfolio.jpg" alt="Portfolio overview across two accounts"></td>
+    <td><img src="docs/images/stock.jpg" alt="Stock page with the P/E band and analysis tabs"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Portfolio: value and P&amp;L, today's movers, verdicts and allocation</sub></td>
+    <td align="center"><sub>Stock: price chart, P/E against its own five-year range, the Research tabs</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/ask-ai.jpg" alt="Ask AI answering from the portfolio with cited sources"></td>
     <td><img src="docs/images/all-numbers.jpg" alt="Every metric correlated against every source"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Archive: the model expands the question, ranks what it finds and answers with citations</sub></td>
+    <td align="center"><sub>Ask AI: answers from your portfolio, analyses and filings, every source cited</sub></td>
     <td align="center"><sub>All numbers: every metric against every source that reports it</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/screener.jpg" alt="Screening analysed companies with a plain-text query"></td>
+    <td><img src="docs/images/performance.jpg" alt="Performance settings with CPU and memory limits for analysis"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Screener: plain-text conditions across everything you have analysed</sub></td>
+    <td align="center"><sub>Performance: caches, background work, and CPU and memory limits for analysis</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/images/spending.jpg" alt="Spending limits and month-to-date usage"></td>

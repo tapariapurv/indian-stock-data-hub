@@ -294,6 +294,7 @@ source .venv/bin/activate</code></pre></div>
     <tr><td>Monthly token limit</td><td>The same idea counted in tokens, useful when you are on a free tier with an allowance.</td></tr>
   </table>
   <p>A call that would cross a limit is refused before it is sent, so a limit cannot be passed by accident; the app tells you plainly that it stopped, and everything else in the run carries on as normal. For the money figures to mean anything, enter what your provider charges per million tokens — input and output — next to its key. The app does not ship a price list, because prices change and a stale one would be worse than none. Local models are always free, are recorded as free, and are never blocked by a limit.</p>
+  <figure><img src="images/spending.jpg" alt="Settings, Spending tab"><figcaption>Settings → Spending: what has been spent this month, and the limits that stop a call before it is sent.</figcaption></figure>
   <p>For scale: a company review is about 400 tokens, a news digest about 300, and an archive question about 2,800 including the search steps. Answers are cached, so re-running the same company costs nothing at all.</p>
 </section>
 
@@ -382,6 +383,7 @@ source .venv/bin/activate</code></pre></div>
   <div class="kicker">Chapter 8</div>
   <h2>All the numbers, in one place</h2>
   <p class="intro">The summary tells you the story. The <strong>All numbers</strong> tab shows you every number behind it, with each source of that number lined up beside the others.</p>
+  <figure><img src="images/all-numbers.jpg" alt="The All numbers tab"><figcaption>The All numbers tab: one row per metric, with the latest quarters beside what every filing says about it.</figcaption></figure>
 
   <h3>What the table shows</h3>
   <p>One row per metric. Reading across, you get the value screener.in publishes, what the last two quarters reported and the change between them, then how the downloaded filings describe the same metric: how many times it appears, the most recent value, and the lowest, middle and highest of every mention.</p>
@@ -444,6 +446,7 @@ source .venv/bin/activate</code></pre></div>
 
   <h3>Accounts and holdings</h3>
   <p>A portfolio is made of <b>accounts</b> — call them what you like: <i>Long term</i>, <i>Trading</i>, <i>Mum's</i>. Search any NSE or BSE listed company and add it to one. Quantity and buy price are optional: leave them blank and the app is a watchlist; fill them in and it shows value, profit and loss, and how much of your money sits in any one stock or sector.</p>
+  <figure><img src="images/portfolio.jpg" alt="The Portfolio page"><figcaption>A demo portfolio across two accounts: value and P&amp;L, today's movers, the AI verdicts, and where the money sits.</figcaption></figure>
   <p>Adding a stock queues its first full analysis in the background — the same scrape, filings and verdict the Research page produces. You do not have to wait for it.</p>
   <div class="note">
     <b>Nothing leaves your computer.</b> Accounts, quantities and buy prices live in <code>~/.stock-data-hub</code>, outside the app folder, so updating the app never touches them. Prices are looked up by ticker symbol alone.
@@ -467,6 +470,7 @@ source .venv/bin/activate</code></pre></div>
 
   <h3>The Stock page</h3>
   <p>Clicking any holding opens its own page: a candlestick chart with 50- and 200-day averages, upcoming results and dividend dates, every analysis ever saved for it, and one line that is hard to get anywhere else — <b>today's P/E against the company's own five-year range</b>.</p>
+  <figure><img src="images/stock.jpg" alt="The Stock page"><figcaption>The Stock page: price chart with 50- and 200-day averages, today's P/E against its own five-year range, and the latest analysis in the same tabs as the Research page.</figcaption></figure>
   <p>A P/E on its own says very little; 43 is cheap for one business and dear for another. Against its own history it starts to mean something: "43, and the 42nd percentile of its own five-year range" says this company has usually been more expensive than it is today. The app shows the low, median and high alongside it.</p>
   <div class="note">
     <b>Read it as a question, not an answer.</b> It compares a company only with its own past, never with its peers, and a company can be re-rated for perfectly good reasons — or stay cheap for perfectly bad ones. A loss-making period has no meaningful P/E, so nothing is shown at all.
@@ -478,6 +482,7 @@ source .venv/bin/activate</code></pre></div>
   <div class="kicker">Chapter 12</div>
   <h2>Screening what you have analysed</h2>
   <p class="intro">Once you have analysed a few dozen companies, the interesting question stops being "what is this one like?" and becomes "which of these meet my conditions?". The Screener page answers that, using queries that read like screener.in's own.</p>
+  <figure><img src="images/screener.jpg" alt="The Screener page"><figcaption>A screen across five analysed companies: conditions in plain text, ready-made screens on the right, results with each company's latest verdict.</figcaption></figure>
 
   <div class="note">
     <b>It screens your archive, not the whole market.</b> The universe is every company the app has analysed, taking the newest saved analysis of each. It grows as you use the app — analyse a watchlist on the Research page, or add stocks to a portfolio and let the background refresher work through them. It will never surface a company you have never looked at.
@@ -572,6 +577,7 @@ ROCE &gt; 20 AND Sales Growth &gt; 15 OR Sector = Banks</code></pre>
     <b>Why the count matters.</b> The model reads six passages. Ask "which of my companies mentioned China?" when twenty-three of them did, and six passages can only ever produce a confident, wrong "six". The count comes straight from the database, so it is right regardless of what the model reads.
   </div>
   <p>Name no company and ask a follow-up like "and its margins?" and it keeps the companies already under discussion, rather than starting again.</p>
+  <figure><img src="images/ask-ai.jpg" alt="An Ask AI answer with sources"><figcaption>An Ask AI answer: a table built from your saved analyses, numbered source chips underneath, the model that answered and how long it took, and three follow-up questions.</figcaption></figure>
 
   <h3>Asking</h3>
   <p>Type a question, or start from one of the suggestions on the empty screen — they are built around stocks you actually hold. The answer streams as it is written. Underneath it you get:</p>
@@ -740,6 +746,7 @@ python -m streamlit run app.py</code></pre></div>
     <tr><td><b>CPU the analysis may use</b></td><td>The share of your computer's processor that parsing filings may take (default 50%). Lower means a slower analysis and a cooler, quieter machine; clicks in the app are never slowed. It also caps how many threads a local Ollama model may use — at 100% Ollama decides for itself.</td></tr>
     <tr><td><b>Memory limit (MB)</b></td><td>A ceiling for the app and its parse workers together (default 2,048 MB). Over it, the next filing waits for memory to free up before it is parsed. 0 means no limit.</td></tr>
   </table>
+  <figure><img src="images/performance.jpg" alt="Settings, Performance tab"><figcaption>Settings → Performance: the switches and caches, and the CPU and memory limits for analysis work.</figcaption></figure>
   <div class="note good">
     <b>Why pages stay quick during an analysis.</b> Reading a large annual report is heavy work. The app does it in separate, low-priority processes — one fresh process per filing, which hands its memory back the moment it finishes — so the page you are on keeps responding instead of freezing for several seconds. The CPU and memory limits apply from the next filing parsed.
   </div>
