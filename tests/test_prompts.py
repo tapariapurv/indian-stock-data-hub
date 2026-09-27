@@ -289,6 +289,29 @@ def check_retrieval(s, rep):
     # tests/test_ask.py covers it end to end, including citations.
 
 
+TAX_NOTICE = ("Sub: Disclosure under Regulation 30 of SEBI (LODR) Regulations, 2015. "
+              "We wish to inform you that the Company has received an assessment order from the Income Tax "
+              "Department for assessment year 2022-23 raising a tax demand of Rs. 412.60 crore along with "
+              "interest. The Company believes the demand is not sustainable and will file an appeal before "
+              "the Commissioner of Income Tax (Appeals) within the prescribed time.")
+NEWSPAPER = ("Sub: Newspaper Publication. Please find enclosed copies of the newspaper advertisement "
+             "published regarding the notice of the Annual General Meeting. This is for your information "
+             "and records.")
+
+
+def check_decoder(s, rep):
+    (res, secs) = timed(llm.decode_announcement, "Strong Compounders Ltd", "Tax demand order", TAX_NOTICE, s)
+    out, tokens = res
+    joined = " ".join(out["points"])
+    rep.add("decoder/tax: three points", len(out["points"]) == 3, joined[:90], tokens, secs)
+    rep.add("decoder/tax: material", out["material"] == "Yes", f"got {out['material']!r}")
+    bad = unsourced(joined, TAX_NOTICE)
+    rep.add("decoder/tax: no invented figures", not bad, f"unsourced: {sorted(bad)}" if bad else "")
+    (res2, secs2) = timed(llm.decode_announcement, "Strong Compounders Ltd", "Newspaper Publication", NEWSPAPER, s)
+    rep.add("decoder/routine: not material", res2[0]["material"] == "No", f"got {res2[0]['material']!r}",
+            res2[1], secs2)
+
+
 def run(model: str) -> tuple[int, int]:
     s = make_settings(model)
     rep = Report(model)
@@ -301,6 +324,7 @@ def run(model: str) -> tuple[int, int]:
         jobs.append(pool.submit(check_guidance, s, rep))
         jobs.append(pool.submit(check_app_guidance, s, rep))
         jobs.append(pool.submit(check_retrieval, s, rep))
+        jobs.append(pool.submit(check_decoder, s, rep))
         for j in futures.as_completed(jobs):
             j.result()
     rep.rows.sort(key=lambda r: r[0])

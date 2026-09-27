@@ -270,7 +270,7 @@ def friendly(error: str | None) -> str:
     if "Timeout" in e or "timed out" in e:
         return "it took too long to start answering"
     if "HTTP 401" in e or "HTTP 403" in e:
-        return "the API key was refused — check Settings → Models & keys"
+        return "the AI service turned down your key — check it in Settings → AI"
     return e.split("{")[0].strip(" :") or e[:160]
 
 
@@ -628,6 +628,9 @@ def _two_fields(raw: str | None, label: str, options: str, prose: str) -> tuple[
 #      five sentences" came back once as the answer itself.
 # --------------------------------------------------------------------------
 
+# The one-word view, as shown to people: said the way a friend would say it.
+VIEW_WORDS = {"Positive": "Looks good", "Neutral": "Mixed picture", "Cautious": "Be careful"}
+
 AI_QUARTERLY_ROWS = ("Sales", "Operating Profit", "OPM", "Net Profit", "EPS")
 
 # The shared preamble. Kept to two sentences: it is prepended to every
@@ -640,6 +643,10 @@ ANALYST = ("You are a careful equity analyst covering Indian listed companies. "
 # The citation example, kept here so the guard below can recognise it coming
 # back. Deliberately free of figures: an example carrying realistic
 # numbers was copied into an answer and reported as fact.
+# Readers are not analysts. One line, shared by every summary a person reads.
+PLAIN = ('Write for someone new to investing: everyday words, and spell out any abbreviation '
+         '(say "operating margin", not "OPM"; "earnings per share", not "EPS").')
+
 EXAMPLE_ANSWER = "The new plant will add capacity [2], funded from internal accruals [1]."
 
 
@@ -762,7 +769,7 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
             'most 70 words of prose, using the figures below.',
             'Quote the figures that support it and name the metric each one belongs to. Do not '
             'contradict the assessment and do not restate these instructions.',
-            'No headings and no bullet points.')
+            'No headings and no bullet points.', PLAIN)
         fields = ("summary",)
     else:
         system = _json_only(
@@ -774,7 +781,7 @@ def analyze(ticker, company_name, metrics, quarterly_df, pros, cons, settings) -
             '- "Neutral" in every other case.',
             '"summary" is prose of at most 70 words on the financial position and outlook. Quote '
             'the figures that decided the verdict and name the metric each one belongs to. No '
-            'headings, no bullet points, no repetition of these instructions.')
+            'headings, no bullet points, no repetition of these instructions.', PLAIN)
         fields = ("verdict", "summary")
     # A verbose model spends its first hundred tokens restating the task, so
     # the floor here is what stops a tight user setting from starving it.
@@ -820,7 +827,7 @@ def summarize_news(company_name: str, headlines: list[dict], settings: dict) -> 
         '- "Positive" if the headlines are mainly new orders, profit growth, upgrades, expansion '
         'or approvals.',
         '- "Mixed" only when clearly good and clearly bad news both appear.',
-        '"summary" is at most 45 words on what is happening, drawn only from these headlines.')
+        '"summary" is at most 45 words on what is happening, drawn only from these headlines.', PLAIN)
     raw, tokens = complete(f"Recent headlines about {company_name}:\n{lines}",
                            max(int(settings["ai"]["tokens_news"]), 260), settings, "News digest",
                            system=system,
@@ -936,6 +943,27 @@ def judge_guidance(company_name: str, claim: dict, actuals: str, settings: dict)
     return {"status": status, "why": _drop_cut_off_sentence(why) if why else None}, tokens
 
 
+def decode_announcement(company_name: str, title: str, text: str, settings: dict) -> tuple[dict, int]:
+    """An exchange filing as three plain-English points and a material yes/no.
+    ponytail: reads the first 6,000 characters -- the covering letter, which
+    states what happened; a long annexure behind it is not read."""
+    system = _json_only(
+        '{"material": "Yes", "point1": "...", "point2": "...", "point3": "..."}',
+        '"point1" says what happened. "point2" gives the amount, date or party involved, copied '
+        'from the filing, or says none is given. "point3" says what it could mean for the business.',
+        'Each point is one plain-English sentence of at most 25 words, for an investor who is not a lawyer.',
+        '"material" is "Yes" if it could change revenue, profit, debt or who runs the company: a tax '
+        'demand, a large order, a capacity change, a top-level resignation, a default or a legal action. '
+        '"No" for routine filings such as newspaper notices, meeting intimations or compliance certificates.')
+    raw, tokens = complete(f"{company_name} filed this with the stock exchange.\nTitle: {title}\n\n{text[:6000]}",
+                           300, settings, "Announcement decoder", system=system,
+                           schema=_schema("material", "point1", "point2", "point3"))
+    reply = _json_reply(raw, "point1", "material") or _json_salvage(raw) or {}
+    points = [_clean_answer(str(reply.get(k) or "")) for k in ("point1", "point2", "point3")]
+    return {"material": _field(f"material: {reply.get('material', '')}", "material", "Yes|No"),
+            "points": [p for p in points if p]}, tokens
+
+
 def expand_query(question: str, settings: dict) -> tuple[list[str], int]:
     """The words a filing would actually use for this question.
 
@@ -1047,7 +1075,7 @@ def stream(messages: list[dict], system: str, max_tokens: int, settings: dict, k
             yield chunk
     if not wrote and not LAST_ERROR:
         LAST_ERROR = ("the model used its whole reply budget thinking and wrote no answer — raise "
-                      "“Chat replies” in Settings → Generation limits" if _FINISH.get("reason") == "MAX_TOKENS"
+                      "“Chat replies” in Settings → AI → Advanced: answer lengths" if _FINISH.get("reason") == "MAX_TOKENS"
                       else f"the model returned an empty reply ({_FINISH.get('reason') or 'no reason given'})")
 
 

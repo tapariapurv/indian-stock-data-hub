@@ -135,6 +135,10 @@ DOC_CATEGORY_PATTERNS = [
     ("Quarterly Results", re.compile(r"result|quarter", re.I)),
 ]
 WANTED_CATEGORIES = ["Concall Transcript", "Investor Presentation", "Annual Report", "Quarterly Results"]
+# How each kind of report is named on screen.
+CATEGORY_WORDS = {"Concall Transcript": "Investor call", "Investor Presentation": "Investor slides",
+                  "Annual Report": "Annual report", "Quarterly Results": "Quarterly results",
+                  "Other Filing": "Other document", "Announcement": "Announcement"}
 
 # Financial keywords the number-extraction pass looks for -> clean label. This
 # is the "template" derived from studying a real concall transcript and IR
@@ -1193,6 +1197,22 @@ def check_guidance(result: dict, settings: dict, only_unchecked: bool = True) ->
             archive.set_claim_status(claim["id"], verdict["status"], verdict["why"], current)
             checked += 1
     return checked, tokens
+
+
+def decode_announcement(result: dict, doc: dict, settings: dict) -> tuple[dict, int]:
+    """Download one exchange announcement, index it, and have the model decode
+    it. Returns ({material, points} or {error}, tokens used)."""
+    ticker = result["ticker"]
+    dest = DOWNLOAD_DIR / ticker / f"Announcement_{hashlib.sha1(doc['url'].encode()).hexdigest()[:10]}.pdf"
+    ok, err = smart_download(doc["url"], dest)
+    if not ok:
+        return {"error": err or "Download failed."}, 0
+    extract_and_index(dest, ticker, "Announcement")
+    text = "\n".join(t for _, t in archive.document_pages(ticker, path=str(dest)))
+    if not text.strip():
+        return {"error": "The PDF has no readable text (probably a scanned image)."}, 0
+    decoded, tokens = llm.decode_announcement(result.get("company_name") or ticker, doc["text"], text, settings)
+    return decoded if decoded["points"] else {"error": llm.friendly(llm.LAST_ERROR) or "The model gave no answer."}, tokens
 
 
 # --------------------------------------------------------------------------

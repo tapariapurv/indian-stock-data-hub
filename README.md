@@ -1,87 +1,111 @@
 # Indian Stock Data Hub
 
-**A free, open-source research desk for Indian listed companies.** Type in a few ticker symbols — or upload a watchlist — and get each company's key ratios, quarterly trends, latest filings, recent news and a plain-English analysis, then export everything to formatted Excel and Word reports.
-
-Everything it downloads stays on your machine: filings are parsed once, searchable across companies forever, and every analysis is saved so you can see what changed since last time. The AI is optional and runs **locally by default** through [Ollama](https://ollama.com) — or against Anthropic, OpenAI, Google, OpenRouter or your own server if you prefer.
+**Look up any company listed in India and see, in plain English, how it's doing, what its bosses promised, and whether anything in its reports should worry you.** Free, open source, and private: it runs on your own computer, and what you own never leaves it.
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-1F4E79)
 ![Streamlit](https://img.shields.io/badge/built%20with-Streamlit-1F4E79)
 ![Local first](https://img.shields.io/badge/AI-local%20by%20default-1F7A4D)
 ![License: MIT](https://img.shields.io/badge/license-MIT-6B6F78)
 
-![The app after analysing three companies](docs/images/overview.jpg)
-
-> **New here?** The illustrated [**User guide (PDF)**](static/user_guide.pdf) walks you through installation, setup and every screen, step by step, with no coding knowledge needed. It's also linked from the app's sidebar.
-
----
-
-## What you won't find elsewhere
-
-Plenty of sites show you a company's numbers. These three things come from the app keeping its own archive:
-
-- **Promise vs delivery.** Every quarter management commits to something on the earnings call — margins, growth, capex. The app pulls those commitments out of the transcript, files them, and grades them against the numbers actually reported later. Over eight quarters you get something no screener will tell you: how often this management does what it says.
-- **Ask your own filings, in plain English.** Every transcript, presentation and annual report you download is indexed, and **Ask AI** reasons over it: when your words don't match the filing's, the model supplies the ones that would (ask about "capex" and it adds *capital expenditure*, *capital allocation*), the database retrieves, the model throws out the coincidental matches — "share capital" is not capital expenditure — and answers from what's left, citing every figure. It sees your portfolio and your saved analyses too, so "which of my holdings looks weakest?" is a fair question. The model you chose in Settings is always given its full timeout to answer; if another has to stand in, the answer says which one did.
-- **What changed since last time.** Each analysis is saved. Run a company again and the app lists what moved: ratios, strengths and risks, new filings, new headlines, a changed verdict. Plain comparison, no model, so nothing is invented.
-
-## Features
-
-- **Company snapshot:** market cap, price, P/E, ROE, ROCE and more, plus screener.in's strengths and risks.
-- **Quarterly trends:** 13 quarters of results with quarter-on-quarter changes, sparklines and a sales-versus-profit chart, plus the profit &amp; loss, balance sheet, cash flow and shareholding tables.
-- **Filings, downloaded for you:** the latest concall transcripts, investor presentations, annual reports and quarterly results (size-capped, cached on disk, parsed once ever).
-- **Every figure from the PDFs:** thousands of numbers extracted with their page and source sentence, in a searchable table.
-- **All numbers, correlated:** one row per metric showing the published ratio, the last two quarters, and what every filing says about it — count, latest, and the low/median/high spread, so an odd number stands out instead of hiding.
-- **Recent news:** headlines from Google News, Bing News, Economic Times, Livemint, Business Standard and Hindu BusinessLine, filtered to the company, spam removed and duplicates merged.
-- **Your choice of model:** Ollama locally, or Anthropic, OpenAI, Google, OpenRouter and any OpenAI-compatible server. Keys live in your settings file or in environment variables.
-- **Batch analysis:** upload a CSV or Excel watchlist and analyse the whole list in one run.
-- **Your actual trades:** log buys and sells and the app works out what you still hold, the average cost of it, realised gains matched first-in first-out, the short/long term split at twelve months, and a money-weighted return (XIRR). It deliberately stops short of computing tax owed — rates change, and a stale rate table is worse than none.
-- **Valuation in context:** a company's P/E against its own five-year range, so "P/E 43" becomes "43, and the 42nd percentile of its own history".
-- **Light enough to leave running:** under 250 MB with every page open, under 200 MB in lean mode. A Performance tab shows what it is using, and every cache, the background refresher and the chart preloading can be turned down or off. Filings are parsed in separate, low-priority processes held to a CPU share and memory ceiling you set, so the app stays quick to click while an analysis runs. It can start itself when you log in, on macOS, Windows and Linux.
-- **Saved history:** reopen any past analysis, chart a ratio across months, and control exactly how long anything is kept. Every saved run lists the filings behind it — the file on disk, the pages its figures came from, and a link to the original — and each metric carries the exact pages it appeared on.
-- **Reports:** an Excel workbook (overview dashboard with live formulas, a sheet per company with a chart, an **All numbers** sheet and every figure in a filterable table) and an A4 Word report with clickable links.
-- **Token-frugal:** the model sees only clean, structured data, replies are length-capped, and answers are cached — re-running costs nothing, and every run reports exactly how many tokens it used.
-
 <table>
   <tr>
-    <td><img src="docs/images/company-and-news.jpg" alt="Company card with AI analysis and news"></td>
-    <td><img src="docs/images/financials.jpg" alt="Financials tab with trends and chart"></td>
+    <td><img src="docs/images/home.jpg" alt="Home"></td>
+    <td><img src="docs/images/company.jpg" alt="A company's page"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Company card: AI analysis, ratios, strengths and risks, news digest</sub></td>
-    <td align="center"><sub>Financials: latest quarter, trends and 13-quarter chart</sub></td>
+    <td align="center"><sub>Home: a search list of every company, today's value, what needs your attention (demo portfolio)</sub></td>
+    <td align="center"><sub>The Stock page: price, what's coming up, candlestick chart</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/portfolio.jpg" alt="Portfolio overview across two accounts"></td>
-    <td><img src="docs/images/stock.jpg" alt="Stock page with the P/E band and analysis tabs"></td>
+    <td><img src="docs/images/company-summary.jpg" alt="Summary section"></td>
+    <td><img src="docs/images/warnings.jpg" alt="Reports and warnings"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Portfolio: value and P&amp;L, today's movers, verdicts and allocation</sub></td>
-    <td align="center"><sub>Stock: price chart, P/E against its own five-year range, the Research tabs</sub></td>
+    <td align="center"><sub>Summary: the AI's view, key numbers, strengths, weaknesses, news</sub></td>
+    <td align="center"><sub>Reports & warnings: annual-report warning signs and announcements</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/ask-ai.jpg" alt="Ask AI answering from the portfolio with cited sources"></td>
-    <td><img src="docs/images/all-numbers.jpg" alt="Every metric correlated against every source"></td>
+    <td><img src="docs/images/portfolio.jpg" alt="Portfolio"></td>
+    <td><img src="docs/images/settings.jpg" alt="Settings"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Ask AI: answers from your portfolio, analyses and filings, every source cited</sub></td>
-    <td align="center"><sub>All numbers: every metric against every source that reports it</sub></td>
+    <td align="center"><sub>Portfolio (demo): value, gain or loss, biggest moves, the AI's view</sub></td>
+    <td align="center"><sub>Settings: layout, chart style and <i>Show more details</i></sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/screener.jpg" alt="Screening analysed companies with a plain-text query"></td>
-    <td><img src="docs/images/performance.jpg" alt="Performance settings with CPU and memory limits for analysis"></td>
+    <td colspan="2"><img src="docs/images/screener.jpg" alt="Screener"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Screener: plain-text conditions across everything you have analysed</sub></td>
-    <td align="center"><sub>Performance: caches, background work, and CPU and memory limits for analysis</sub></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/images/spending.jpg" alt="Spending limits and month-to-date usage"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><sub>Spending: real limits on a paid provider, and what has actually been used</sub></td>
+    <td colspan="2" align="center"><sub>Screener: every NSE-listed company, with SMEs a tick away</sub></td>
   </tr>
 </table>
 
-## Quick start
+> **New here?** The short [**User guide (PDF)**](static/user_guide.pdf) explains every screen in plain English. It's also linked from the app's Home and Settings pages.
+
+---
+
+## Set it up the easy way
+
+Paste this into an AI assistant that can work on your computer (Claude Code, Claude Desktop, ChatGPT's desktop app, Codex, Cursor…) and it will install everything for you. A chat-only assistant will walk you through it instead.
+
+```text
+Please set up the "Indian Stock Data Hub" app on my computer. I'm not
+technical, so do every step yourself where you can, explain anything I
+need to do in plain words, and check each step worked before moving on.
+
+1. Check that Python 3.10 or newer is installed (python3 --version, or
+   python --version on Windows). If not, install it from python.org. On
+   Windows, tick "Add python.exe to PATH" in the installer.
+2. Download the app into my Documents folder:
+   git clone https://github.com/tapariapurv/indian-stock-data-hub.git
+   (If git isn't available, download and unzip
+   https://github.com/tapariapurv/indian-stock-data-hub/archive/refs/heads/main.zip)
+3. In the app's folder, make a virtual environment and install the app:
+   python3 -m venv .venv
+   then  .venv/bin/python -m pip install -r requirements.txt
+   (Windows: .venv\Scripts\python -m pip install -r requirements.txt)
+4. Install Ollama, the free AI, from https://ollama.com/download and make
+   sure it's running. Download a model that suits my computer's memory:
+   "ollama pull gemma4:e2b" for 8 GB, "ollama pull gemma4:e4b" for 16 GB
+   or more.
+5. Start the app with  .venv/bin/python -m streamlit run app.py
+   (Windows: .venv\Scripts\python -m streamlit run app.py)
+   It opens at http://localhost:8501. In the app, go to Settings → AI,
+   choose Ollama, press "Check it works", pick the model, and press
+   "Save AI settings".
+6. Ask me whether I'd like the app to start by itself when I log in. If
+   yes, it's in Settings → Advanced → Speed & memory → Start automatically.
+7. Finish by telling me, in two or three plain sentences, how to open the
+   app next time.
+
+Don't edit any of the app's files, and ask me before installing anything
+that costs money (nothing here should).
+```
+
+## What you won't find elsewhere
+
+Plenty of sites show you a company's numbers. These come from the app reading the company's own documents and keeping its own record:
+
+- **Warning signs in the annual report.** The app searches the report for what analysts dig for: an auditor who wasn't fully satisfied, a change in accounting rules, a jump in loans to companies linked to the owners, and tax demands or claims the company hasn't accepted. It uses plain pattern matching, not AI, so it can't invent anything, and every warning shows its page.
+- **Announcements, explained.** Companies file notices with the stock exchange constantly, often as long legal PDFs. Each one is tagged straight away (a resignation, a tax demand, a new order, routine paperwork…), and **Explain** turns it into three plain points and a yes/no on whether it could matter.
+- **Were the promises kept?** Every quarter the bosses commit to something on the investor call: margins, growth, cutting debt. The app files those promises and checks them against the results reported later. Over a few quarters you learn something no stock screener shows: how often this management does what it says.
+- **Ask in your own words.** **Ask AI** answers from your portfolio, your past analyses and every report the app has downloaded, and shows where each fact came from.
+- **What changed since last time.** Every check is saved, so the app can list exactly what moved. It's a straight comparison with no AI, so nothing is made up.
+
+## Features
+
+- **Home:** one search box listing every NSE company (main board and SME) that you filter by typing a name or symbol, what your stocks are worth today, a short *Needs your attention* list, and all your stocks in one table.
+- **A page for every company:** price and a candlestick chart with 50- and 200-day averages (or a simple line), upcoming results and dividends, whether the share is cheap or dear against its own history, and seven sections: Summary, Results, Every number, What changed, Promises kept?, Reports & warnings, and Past checks. It works for any listed company, not only ones you own.
+- **Plain English everywhere:** the AI's view is *Looks good*, *Mixed picture* or *Be careful*; ratios are explained on hover; a **Show more details** switch brings back every figure, the original financial terms, AI costs, model names and file paths.
+- **Your portfolio:** accounts, live value and gain or loss, how it has done against the market, how your money is spread, and every buy and sell with profit on shares sold (oldest sold first, as Indian tax rules count it) and a yearly return.
+- **Alerts:** a Mac pop-up or an email when the AI's view changes, a company publishes something important, a promise isn't kept, or a price you're watching is reached, plus a weekly summary.
+- **Every number from the reports:** thousands of figures read from the PDFs, each with its page and the sentence it came from.
+- **Screener, Compare, Research:** ready-made or custom searches across every NSE-listed company (tick *Include SMEs* for SMEs), companies side by side, and a spreadsheet or Word report for a whole list at once.
+- **Your choice of AI:** Ollama for free on your own computer (the default), or Anthropic, OpenAI, Google, OpenRouter or any OpenAI-compatible server, with spending limits that can't be exceeded.
+- **Make it yours:** menu across the top or down the side, which page it opens on, hide the pages you don't use, choose a company page's sections, colour, text size and spacing.
+- **Light enough to leave running:** reports are read in separate low-priority processes held to the CPU and memory limits you set, so the app stays quick while it works. It can start by itself when you log in, on macOS, Windows and Linux.
+
+## Quick start (by hand)
 
 You need **Python 3.10 or newer** ([download](https://www.python.org/downloads/); on Windows, tick *"Add python.exe to PATH"* in the installer).
 
@@ -101,13 +125,13 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-The app opens at **http://localhost:8501**. Type some tickers (e.g. `RELIANCE, TCS, INFY`) and click **Run analysis**.
+The app opens at **http://localhost:8501** on the Home page. Type a company's name in the search box to begin.
 
 No git? Click **Code → Download ZIP** on GitHub, unzip it, and run steps 2 to 4 inside the folder.
 
 ## Choosing a model (optional)
 
-Everything except the verdicts, analyses, news digests, transcript reading and archive answers works without a model. There are four ways to set one up, and you can switch at any time in **Settings → Models & keys**.
+Everything except the AI summaries, **Explain**, promise checking and **Ask AI** works without a model. There are four ways to set one up, and you can switch at any time in **Settings → AI**.
 
 | Route | Good when | Cost | Your data |
 |---|---|---|---|
@@ -120,7 +144,7 @@ Everything except the verdicts, analyses, news digests, transcript reading and a
 
 **A local app or your own server.** Turn on its OpenAI-compatible endpoint, then pick *Custom / self-hosted* and paste the address (e.g. `http://localhost:1234/v1`). For Ollama on another machine, keep the Ollama provider and change the address.
 
-**A hosted API.** Pick the provider, paste a key, hit *Test connection*:
+**A hosted API.** Pick the provider, paste a key, press *Check it works*:
 
 | Provider | Key from | Environment variable |
 |---|---|---|
@@ -148,7 +172,7 @@ For scale: a company review is ≈400 tokens, a news digest ≈300, an archive q
 
 ## Analysing a watchlist
 
-Upload a CSV or Excel file with a `ticker` column (`symbol`, `scrip`, `code` and `NSE code` also work; otherwise the first column is used). The sidebar has a **Watchlist template (CSV)** button that gives you the right shape:
+**Research** takes a list of symbols, or a CSV or Excel file with a `ticker` column (`symbol`, `scrip`, `code` and `NSE code` also work; otherwise the first column is used). The page has a **Download an example** button that gives you the right shape:
 
 ```csv
 ticker,notes
@@ -184,27 +208,28 @@ flowchart LR
 
 | Page | What it's for |
 |---|---|
-| **Portfolio** | Accounts, live value and P&L, allocation limits, alerts, the weekly digest — and **Trades**, where realised gains and a money-weighted return come from what you actually bought and sold. |
-| **Stock** | One company: candlestick chart, upcoming events, its P/E against its own five-year range, the same tabs as Research (overview, financials, all numbers, what changed, guidance, filings) for its latest analysis, and every analysis ever saved for it. |
-| **Screener** | Filter every analysed company with a screener.in-style query, including how often its management kept its word. |
-| **Compare** | Put analysed companies side by side. |
-| **Research** | Run an analysis; read it across Overview, Financials, All numbers, What changed, Guidance and Filings. |
-| **Ask AI** | A chat window over everything the app has saved. |
-| **Archive** | Ask a question across every filing you've downloaded: the model expands the wording, ranks what's found and answers with citations — offline. |
-| **History** | Reopen any saved analysis and chart a ratio over months. |
-| **Settings** | Models and keys, scraping limits, appearance, what gets kept, and how heavy the app is allowed to be. |
+| **Home** | Look up any company, see what your stocks are worth today and what needs your attention. |
+| **Stock** | Everything about one company, held or not: chart, upcoming events, value against its own history, and the Summary, Results, Every number, What changed, Promises kept?, Reports & warnings and Past checks sections. |
+| **Portfolio** | Accounts, value and gain or loss, how it's doing, buys and sells, how your money is spread, alerts and the weekly summary. |
+| **Research** | Look into a whole list at once and download a spreadsheet or Word report. |
+| **Ask AI** | Ask in your own words; answers cite your portfolio, past analyses and downloaded reports. |
+| **More → Screener** | Search every NSE-listed company (SMEs optional) on price and valuation, plus ROE, ROCE, growth and promises for companies the app has looked into. |
+| **More → Compare** | Two to four companies side by side. |
+| **More → Archive** | Instant word search across every downloaded report. |
+| **More → History** | Reopen any earlier check and chart a measure over months. |
+| **More → Settings** | Layout & look, AI, alerts, spending limits, and advanced options. |
 
 ## Configuration
 
-Almost everything is set from **Settings** inside the app and stored in `settings.json`:
+Almost everything is set from **Settings** and saved to `settings.json` in your data folder (`~/.stock-data-hub`).
 
 | Area | Examples |
 |---|---|
-| Models & keys | Provider, server address, API key, model, reply-length caps, temperature, timeout |
-| Data & scraping | Default tickers and filing types, size and page limits, parallel downloads, politeness delay, news window, feature switches |
-| Appearance | Accent colour, text size, spacing, chart colours, table height, decimals, sparklines, which tabs appear and in what order |
-| Storage & history | How long to keep saved analyses, filing PDFs and searchable text; per-company caps; automatic clear-out |
-| Performance | Background work on/off, chart preloading, cache sizes, refresh interval, parallel downloads, CPU and memory limits for analysis, lean mode, start at login |
+| Layout & look | Menu at the top or side, start page, hidden pages, a company page's sections, detailed (candles) or simple chart, *Show more details*, colour, text size, spacing, table and chart options, share tracking, re-check interval, concentration warnings |
+| AI | Service, address, key, model, answer lengths, temperature, timeout |
+| Alerts | Mac pop-up and/or email, what to be told about, the weekly summary |
+| Spending | Monthly money and token limits, a per-analysis limit, where it went |
+| Advanced | What to read and how far back, download and page limits, news window, feature switches; how long things are kept and backups; background work, cache sizes, CPU and memory limits, start at login |
 
 A few things are still set at launch:
 
@@ -214,7 +239,7 @@ A few things are still set at launch:
 | App port | `python -m streamlit run app.py --server.port 8502` | `8501` |
 | Base theme | `.streamlit/config.toml` | light "research desk" theme |
 
-If the appearance settings ever look wrong, switch off **Apply my appearance settings** and the app falls straight back to that base theme.
+If the look ever goes wrong, switch off **Use my colour and text size below** in Settings → Layout & look and the app falls straight back to the base theme.
 
 ## What's kept, and for how long
 
@@ -229,40 +254,43 @@ Set any limit to 0 to keep it forever. The clear-out runs at startup, on demand,
 ## Project structure
 
 ```
-├── app.py                  # entry point: theme + page navigation
+├── app.py                  # entry point: navigation built from your layout settings
 ├── core.py                 # scraping, downloads, PDF extraction, news, correlation
 ├── llm.py                  # every model provider behind one interface
 ├── archive.py              # local SQLite: extraction cache, search, history, guidance
 ├── portfolio.py            # accounts, holdings, trades, prices, background refresher
 ├── alerts.py               # the inbox, notifications and the weekly digest
-├── screener.py             # queries over every analysed company
+├── screener.py             # the NSE company lists, Yahoo market figures, and screen queries
 ├── assistant.py            # the Ask AI chat
 ├── exports.py              # Excel and Word report builders
 ├── settings.py             # defaults, settings file, appearance
 ├── runtime.py              # memory reporting and starting with the computer
-├── ui.py                   # shared rendering (company card, tables)
+├── disclosures.py          # annual-report warning signs and announcement tags (no AI)
+├── ui.py                   # shared rendering (company card, tabs, company search)
 ├── app_pages/
-│   ├── portfolio_page.py   # accounts, holdings, trades, allocation, alerts, digest
-│   ├── stock.py            # one company: chart, events, P/E band, saved analyses
-│   ├── screener_page.py    # filter every analysed company
-│   ├── compare.py          # companies side by side
-│   ├── research.py         # run an analysis and read it
-│   ├── ask.py              # chat over everything saved
-│   ├── archive_search.py   # search every downloaded filing
-│   ├── history.py          # past analyses
-│   └── settings_page.py    # all settings
+│   ├── home.py             # Home: search, today's value, needs your attention
+│   ├── stock.py            # Company: any company's page
+│   ├── portfolio_page.py   # Portfolio: accounts, holdings, trades, spread, alerts
+│   ├── ask.py              # Ask AI
+│   ├── screener_page.py    # Screener
+│   ├── compare.py          # Compare
+│   ├── research.py         # Research
+│   ├── archive_search.py   # Archive
+│   ├── history.py          # History
+│   └── settings_page.py    # Settings
 ├── requirements.txt
 ├── .streamlit/config.toml  # base theme + static file serving (for the guide link)
-├── static/user_guide.pdf   # illustrated user guide, opened from the sidebar
+├── static/user_guide.pdf   # the user guide, opened from Home and Settings
 ├── docs/
 │   ├── user_guide.html     # source of the PDF guide (rebuild steps inside)
-│   └── images/             # screenshots
+│   └── images/             # screenshots (demo portfolio, no real holdings)
 └── tests/
     ├── test_exports.py     # Excel/Word files are valid and injection-safe
     ├── test_archive.py     # cache, search, history, retention, watchlists, lazy PDF parsing
     ├── test_providers.py   # every provider, spend tracking and budget limits
     ├── test_portfolio.py   # FIFO gains, XIRR, the P/E band, cache keys
     ├── test_screener.py    # query parsing and the guidance score
+    ├── test_disclosures.py # warning signs and announcement tags
     ├── test_runtime.py     # memory reporting and the autostart files
     ├── test_performance.py # analysis stays off the UI and inside the CPU/memory limits
     ├── test_ask.py         # the Ask AI chat end to end (needs Ollama)
@@ -280,6 +308,7 @@ python tests/test_archive.py
 python tests/test_providers.py
 python tests/test_portfolio.py
 python tests/test_screener.py
+python tests/test_disclosures.py
 python tests/test_runtime.py
 python tests/test_performance.py
 python tests/test_app_smoke.py
@@ -294,7 +323,7 @@ python tests/test_ask.py                # the Ask AI chat, end to end
 
 Both take `--live` to run against the provider you have configured instead, which spends real money on a paid key. `test_ask.py --context` checks the retrieval without needing any model at all.
 
-`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_performance.py` parses the bundled user guide in the worker processes and checks that the server stays responsive meanwhile, that the CPU limit actually slows the parse, that a new parse waits while the app is over its memory limit (and gives up after two minutes), and that a local Ollama model is given no more threads than the limit allows. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it renders every page and tab, and checks the Trades page agrees with the maths.
+`test_exports.py` builds both reports from sample data containing hostile text, and checks that no scraped text becomes an Excel formula, that Word's XML is in the order Word requires, and that both files re-open. `test_archive.py` runs the archive against a throwaway database: extraction caching, full-text search, saved history and diffs, guidance, retention limits and watchlist parsing. `test_providers.py` runs all six providers against a mock server that speaks the real API shapes, checking the requests, the authentication headers, the token accounting and that a spending limit actually refuses a call. `test_portfolio.py` covers the money: FIFO matching oldest buys first, charges inside the cost basis, a sale with no matching buy reported rather than invented, the twelve-month line, and XIRR returning nothing when no rate exists. `test_screener.py` checks the guidance score counts only graded promises and that a company with none is never swept in by a comparison. `test_disclosures.py` feeds the warning-sign scanner the boilerplate every annual report carries (which must stay silent) alongside real warnings, checks the related-party loan jump and each announcement tag, and holds the noise cases found in real reports. `test_runtime.py` parses the generated LaunchAgent back to confirm launchd would accept it, and exercises enable/disable against a temporary directory so a test run can never leave something behind that starts at your next login. `test_performance.py` parses the bundled user guide in the worker processes and checks that the server stays responsive meanwhile, that the CPU limit actually slows the parse, that a new parse waits while the app is over its memory limit (and gives up after two minutes), and that a local Ollama model is given no more threads than the limit allows. `test_app_smoke.py` runs the real app headlessly against a throwaway data directory — it checks the app opens on Home, renders every page and tab, honours the layout settings, opens a page for a company you don't hold, and checks the Buys & sells page agrees with the maths.
 
 `test_ask.py` drives the whole Ask AI chat: that what is streamed matches what is stored, that the follow-up marker never reaches the screen, that it cites only sources that exist, that scope and the filings toggle work, and that it says so rather than inventing when the archive has nothing. `test_prompts.py` is different: it scores the prompts against a real model rather than asserting the code ran. It is how the verdict, sentiment and guidance-grading bugs were found. It runs on local Ollama only and redirects the database, so it never touches your archive or spend ledger; `--live` opts in to the provider you have configured and will spend real money on a paid key.
 
@@ -305,13 +334,12 @@ Both take `--live` to run against the provider you have configured instead, whic
 | `python` / `python3` not found | Install Python 3.10+; on Windows re-run the installer with *Add python.exe to PATH* ticked. |
 | Windows: "running scripts is disabled" | Skip activation and prefix commands with `.venv\Scripts\`, e.g. `.venv\Scripts\python -m streamlit run app.py`. |
 | "No module named streamlit" | Activate the virtual environment first (`source .venv/bin/activate` or `.venv\Scripts\activate`). |
-| A ticker shows **Failed** | Check the symbol: it's the part after `/company/` in the company's screener.in URL. |
-| Sidebar badge says the provider isn't reachable | Open **Settings → Models & keys** and hit *Test connection*. For Ollama, check http://localhost:11434 says "Ollama is running". |
-| The model returns no summary | Update Ollama (0.9+ required) or pick another model. Raise the reply cap in **Settings → Generation limits** if answers look cut off. |
-| Stale numbers | Results are cached for an hour: **Settings → Clear cached results**. |
-| Guidance tab says no transcript | Tick **Concall Transcript** in the sidebar and run the analysis again. |
-
-More answers are in chapter 21 of the [user guide](static/user_guide.pdf).
+| A company "couldn't load" | Check the symbol: it's the part after `/company/` in the company's screener.in address. |
+| Settings → AI says "Couldn't connect" | For Ollama, open the Ollama app and check http://localhost:11434 says "Ollama is running", then press **Check it works**. |
+| No AI summary | Update Ollama (0.9+ required) or pick another model. Raise the limits in **Settings → AI → Advanced: answer lengths** if answers look cut off. |
+| No warning signs found, but you expected some | Auditor reports often sit deep in a long annual report: raise **Pages to read per report** in Settings → Advanced → Downloading. |
+| Stale numbers | Results are cached for an hour: **Settings → Advanced → Storage & backups → Clear cached results**. |
+| Anything else | Turn on **Show more details** in Settings → Layout & look to see the full error. |
 
 ## Disclaimer
 

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 import requests
 
+import core
 import portfolio as pf
 
 DEFAULTS = {"channels": ["mac"], "email_url": "", "email_token": "", "verdict": True, "filing": True,
@@ -105,18 +106,35 @@ def after_analysis(previous: dict | None, result: dict, settings: dict) -> None:
     name = result.get("company_name") or ticker
     old_v, new_v = previous.get("ai_verdict"), result.get("ai_verdict")
     if n["verdict"] and old_v and new_v and old_v != new_v:
-        rank = {"Cautious": 0, "Neutral": 1, "Positive": 2}
-        way = "up" if rank.get(new_v, 1) > rank.get(old_v, 1) else "down"
-        add_event(ticker, "verdict", f"{ticker}: AI verdict {old_v} → {new_v}",
-                  f"The latest analysis of {name} rates it {new_v}, {way} from {old_v}. "
+        import llm
+        w = lambda v: llm.VIEW_WORDS.get(v, v)
+        add_event(ticker, "verdict", f"{ticker}: the AI's view changed to “{w(new_v)}”",
+                  f"After its latest check of {name}, the AI now says “{w(new_v)}” (before: “{w(old_v)}”). "
                   f"{(result.get('ai_summary') or '').strip()}".strip())
     before, after = _filing_urls(previous), _filing_urls(result)
     fresh = [cat for cat, urls in after.items() if urls - before.get(cat, set()) and before.get(cat)]
     if n["filing"]:
         for cat in fresh:
+            cat = core.CATEGORY_WORDS.get(cat, cat)
             add_event(ticker, "filing", f"{ticker}: new {cat.lower()}",
-                      f"{name} has published a new {cat.lower()}. It has been downloaded, its figures "
-                      f"extracted, and it is now searchable in the archive.")
+                      f"{name} has published a new {cat.lower()}. The app has read it, and you can search "
+                      f"it on the Archive page.")
+        import archive
+        import disclosures
+        seen = {d["url"] for d in previous.get("documents") or []}
+        for d in result.get("documents") or []:
+            if seen and d["url"] not in seen and disclosures.is_announcement(d):
+                label, severity = disclosures.tag_announcement(d["text"])
+                if severity == "high":
+                    add_event(ticker, "filing", f"{ticker}: important announcement ({label.lower()})",
+                              f"{name} announced: “{d['text'][:200]}”. Press Explain on its "
+                              f"Reports & warnings tab for a simple summary.")
+        if "Annual Report" in fresh:
+            serious = [f for f in disclosures.red_flags(archive.document_pages(ticker, "Annual Report"))
+                       if f["severity"] == "high"]
+            if serious:
+                add_event(ticker, "filing", f"{ticker}: {len(serious)} warning sign(s) in the new annual report",
+                          " · ".join(f"{f['kind']} (page {f['page']})" for f in serious[:3]))
     features = settings["features"]
     if n["guidance"] and features.get("guidance") and settings["ai"].get("enabled"):
         import archive
@@ -130,9 +148,9 @@ def after_analysis(previous: dict | None, result: dict, settings: dict) -> None:
             missed = conn.execute("SELECT quarter, claim, why FROM guidance WHERE ticker=? AND status='Missed' "
                                   "AND checked_at >= ?", (ticker, started)).fetchall()
         for m in missed:
-            add_event(ticker, "guidance", f"{ticker}: guidance missed",
-                      f"In the {m['quarter']} concall, management said: “{m['claim']}”. "
-                      f"Checked against the results reported since, it was missed. {m['why'] or ''}".strip())
+            add_event(ticker, "guidance", f"{ticker}: a promise wasn't kept",
+                      f"In {m['quarter']}, the company's bosses said: “{m['claim']}”. "
+                      f"The results since show it didn't happen. {m['why'] or ''}".strip())
 
 
 # --- Delivery --------------------------------------------------------------------
@@ -187,7 +205,7 @@ def notify(title: str, text: str, settings: dict, html_body: str | None = None) 
             problems.append(f"macOS notification: {exc}")
     if "email" in n["channels"]:
         if not (n["email_url"] and n["email_token"]):
-            problems.append("email: not set up (Settings → Notifications)")
+            problems.append("email: not set up yet (Settings → Alerts)")
         else:
             try:
                 resp = requests.post(n["email_url"], timeout=30, json={
