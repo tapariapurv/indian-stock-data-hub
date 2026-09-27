@@ -5,12 +5,13 @@ import streamlit as st
 
 import portfolio as pf
 import screener as sc
-from ui import VERDICT_BADGE
+from ui import VERDICT_BADGE, VIEW_WORDS
 
-st.markdown("### :material/compare_arrows: Compare")
+st.title("Compare")
+st.caption("Put two to four companies side by side.")
 df = sc.universe(sc.version())
 if len(df) < 2:
-    st.info("Analyse at least two companies to compare them.", icon=":material/info:")
+    st.info("Look into at least two companies first, then compare them here.", icon=":material/info:")
     st.stop()
 
 names = dict(zip(df["Ticker"], df["Company"]))
@@ -36,7 +37,7 @@ for col, t in zip(cols, picked):
         st.caption(f"{names[t]} · {rows.loc[t, 'Sector'] or 'sector n/a'}")
         if v:
             color, icon = VERDICT_BADGE.get(v, ("gray", None))
-            st.badge(v, icon=icon, color=color)
+            st.badge(VIEW_WORDS.get(v, v), icon=icon, color=color)
 
 table = rows[metrics].T
 table.index = [f"{m} ({sc.UNITS[m]})" if m in sc.UNITS else m for m in metrics]
@@ -52,10 +53,10 @@ def lead(row):
 
 
 st.dataframe(table.style.apply(lead, axis=1).format("{:,.1f}", na_rep="—"), width="stretch")
-st.caption("Green marks the leader on each line (lowest for valuation multiples, highest otherwise). "
-           "Figures come from each company's latest saved analysis.")
+st.caption("Green marks the best on each line — the highest, except for price measures (P/E, price to book) "
+           "where cheaper is better.")
 
-st.markdown("**Share price, past year** :gray[· rebased to 100]")
+st.markdown("**Share price over the past year** :gray[· what ₹100 invested a year ago is worth now]")
 held_ids = pf.tracked()
 series = {}
 for t in picked:

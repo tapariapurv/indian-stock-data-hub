@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Source for static/user_guide.pdf (the guide linked from the app's sidebar).
+<!-- Source for static/user_guide.pdf (the guide linked from the app's Settings page).
      After editing, rebuild the PDF from the project folder with Google Chrome:
        macOS:   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --no-pdf-header-footer \
                   --virtual-time-budget=8000 --print-to-pdf=static/user_guide.pdf docs/user_guide.html
@@ -9,835 +9,382 @@
 <head>
 <meta charset="utf-8">
 <title>Indian Stock Data Hub: User guide</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   @page { size: A4; margin: 18mm 18mm 20mm;
-          @bottom-left { content: "Indian Stock Data Hub · User guide"; font: 8pt Inter, sans-serif; color: #8A8E97; }
-          @bottom-right { content: counter(page); font: 8pt Inter, sans-serif; color: #8A8E97; } }
+          @bottom-left { content: "Indian Stock Data Hub · User guide"; font: 8pt Inter, sans-serif; color: #9CA3AF; }
+          @bottom-right { content: counter(page); font: 8pt Inter, sans-serif; color: #9CA3AF; } }
   @page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
-  :root { --ink: #1C1F26; --muted: #5E636E; --accent: #1F4E79; --line: #E3E0D8; --paper: #F6F4EF; --green: #1F7A4D; --red: #B4382F; --amber: #A8620A; }
+  :root { --ink: #1C1F26; --muted: #5E636E; --accent: #1F4E79; --line: #E3E0D8; --paper: #F6F4EF; --tint: #EEF3F8;
+          --amber: #D97706; --red: #DC2626; --green: #15803D; }
   * { box-sizing: border-box; }
-  body { font: 10.5pt/1.55 Inter, "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; }
-  h1, h2, h3 { font-family: "Source Serif 4", Georgia, serif; font-weight: 600; line-height: 1.2; color: var(--ink); }
-  h1 { font-size: 30pt; margin: 0 0 8pt; letter-spacing: -0.01em; }
-  h2 { font-size: 18pt; margin: 0 0 4pt; break-after: avoid; }
-  h3 { font-size: 12pt; margin: 16pt 0 4pt; break-after: avoid; }
-  p { margin: 0 0 8pt; }
+  body { font: 11pt/1.6 Inter, "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1, h2, h3 { font-family: "Source Serif 4", Georgia, serif; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+  h1 { font-size: 32pt; margin: 0 0 10pt; }
+  h2 { font-size: 20pt; margin: 0 0 6pt; break-after: avoid; }
+  h3 { font-size: 12.5pt; margin: 16pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 9pt; }
   a { color: var(--accent); text-decoration: none; }
-  code, pre, kbd { font-family: "JetBrains Mono", Menlo, Consolas, monospace; font-size: 8.8pt; font-variant-ligatures: none; }
+  code, pre { font-family: "JetBrains Mono", Menlo, Consolas, monospace; font-size: 8.8pt; }
   code { background: var(--paper); padding: 1pt 4pt; border-radius: 3pt; }
-  kbd { border: 1px solid #CFCBC1; border-bottom-width: 2px; border-radius: 3pt; padding: 0 4pt; background: #fff; }
-  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 6pt; padding: 7pt 10pt; margin: 4pt 0 10pt; white-space: pre-wrap; break-inside: avoid; }
+  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 8pt; padding: 9pt 11pt; margin: 4pt 0 10pt;
+        white-space: pre-wrap; break-inside: avoid; line-height: 1.5; }
   pre code { background: none; padding: 0; }
-  pre .c { color: #8A8E97; }
-  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
-  li { margin-bottom: 3pt; }
-  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 9.5pt; break-inside: avoid; }
-  th { text-align: left; font-weight: 600; background: var(--paper); border-bottom: 1px solid var(--line); padding: 5pt 7pt; }
-  td { border-bottom: 1px solid var(--line); padding: 5pt 7pt; vertical-align: top; }
-  img { max-width: 100%; border: 1px solid var(--line); border-radius: 6pt; display: block; }
+  ul, ol { margin: 0 0 9pt; padding-left: 16pt; }
+  li { margin-bottom: 4pt; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 10pt; break-inside: avoid; }
+  th { text-align: left; font-weight: 600; background: var(--paper); padding: 6pt 8pt; }
+  td { border-bottom: 1px solid var(--line); padding: 6pt 8pt; vertical-align: top; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  img { max-width: 100%; border: 1px solid var(--line); border-radius: 8pt; display: block; }
   figure { margin: 8pt 0 12pt; break-inside: avoid; }
   figcaption { font-size: 8.5pt; color: var(--muted); margin-top: 4pt; }
   .chapter { break-before: page; }
-  .kicker { font-size: 8pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 2pt; }
-  .intro { color: var(--muted); font-size: 11pt; margin-bottom: 10pt; padding-bottom: 8pt; border-bottom: 1px solid var(--line); }
-  .note { border-left: 3px solid var(--accent); background: #EEF3F8; padding: 7pt 10pt; border-radius: 0 6pt 6pt 0; margin: 8pt 0 12pt; break-inside: avoid; }
-  .note.warn { border-color: var(--amber); background: #FBF5EC; }
-  .note.good { border-color: var(--green); background: #EDF6F0; }
-  .step { display: grid; grid-template-columns: 22pt 1fr; gap: 10pt; margin: 9pt 0; }
-  .num { width: 22pt; height: 22pt; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 600; font-size: 10pt; display: flex; align-items: center; justify-content: center; margin-top: 1pt; }
+  .kicker { font-size: 8.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 4pt; }
+  .intro { color: var(--muted); font-size: 12pt; margin-bottom: 14pt; }
+  .note { background: var(--tint); border-radius: 8pt; padding: 9pt 12pt; margin: 8pt 0 12pt; break-inside: avoid; }
+  .note.warn { background: #FEF6E7; }
+  .step { display: grid; grid-template-columns: 24pt 1fr; gap: 10pt; margin: 10pt 0; break-inside: avoid; }
+  .num { width: 24pt; height: 24pt; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700;
+         display: flex; align-items: center; justify-content: center; }
   .step h3 { margin-top: 2pt; }
-  .os { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; break-inside: avoid; }
-  .os > div { border: 1px solid var(--line); border-radius: 8pt; padding: 8pt 10pt; }
-  .os h4 { margin: 0 0 4pt; font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-  .os pre { margin-bottom: 4pt; }
-  .tag { display: inline-block; font-size: 8pt; font-weight: 600; padding: 1pt 6pt; border-radius: 99pt; white-space: nowrap; }
-  .tag.best { background: #E5F2EA; color: var(--green); }
-  .tag.low { background: #F7E9E7; color: var(--red); }
-  .flow { display: flex; gap: 6pt; align-items: stretch; margin: 10pt 0 14pt; break-inside: avoid; }
-  .flow > div { flex: 1; border: 1px solid var(--line); border-radius: 8pt; padding: 7pt 8pt; background: #fff; font-size: 8.8pt; }
-  .flow b { display: block; font-size: 9.5pt; color: var(--accent); margin-bottom: 2pt; }
-  .flow .arrow { flex: 0 0 10pt; border: 0; padding: 0; align-self: center; color: var(--muted); font-size: 12pt; background: none; }
-  .cover { height: 245mm; display: flex; flex-direction: column; }
-  .cover .top { border-bottom: 3px solid var(--accent); padding-bottom: 14pt; margin-top: 30mm; }
-  .cover .eyebrow { font-size: 9pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 10pt; }
-  .cover .lede { font-size: 12.5pt; color: var(--muted); max-width: 145mm; margin: 0; }
-  .toc { margin-top: 16mm; columns: 2; column-gap: 12mm; }
-  .toc div { break-inside: avoid; padding: 5pt 0; border-bottom: 1px solid var(--line); font-size: 10pt; }
-  .toc span { color: var(--accent); font-weight: 600; display: inline-block; width: 18pt; }
-  .cover .bottom { margin-top: auto; font-size: 9pt; color: var(--muted); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
-  .card { border: 1px solid var(--line); border-radius: 8pt; padding: 9pt 11pt; break-inside: avoid; }
+  .card { border: 1px solid var(--line); border-radius: 10pt; padding: 10pt 12pt; break-inside: avoid; }
   .card h3 { margin-top: 0; }
+  .badge { display: inline-block; font-size: 8.5pt; font-weight: 600; padding: 1pt 7pt; border-radius: 99pt; }
+  .b-good { background: #E7F4EC; color: var(--green); } .b-mid { background: #FEF3E2; color: var(--amber); }
+  .b-bad { background: #FDECEC; color: var(--red); }
+  .cover { height: 245mm; display: flex; flex-direction: column; }
+  .cover .top { margin-top: 40mm; border-bottom: 3px solid var(--accent); padding-bottom: 16pt; }
+  .cover .lede { font-size: 13pt; color: var(--muted); max-width: 140mm; margin: 0; }
+  .toc { margin-top: 16mm; columns: 2; column-gap: 12mm; }
+  .toc div { break-inside: avoid; padding: 6pt 0; border-bottom: 1px solid var(--line); }
+  .toc span { color: var(--accent); font-weight: 700; display: inline-block; width: 20pt; }
+  .cover .bottom { margin-top: auto; font-size: 9.5pt; color: var(--muted); }
   dl { margin: 0; columns: 2; column-gap: 12mm; }
-  dl div { break-inside: avoid; margin-bottom: 7pt; }
+  dl div { break-inside: avoid; margin-bottom: 8pt; }
   dt { font-weight: 600; }
-  dd { margin: 0; color: var(--muted); font-size: 9.5pt; }
-  .muted { color: var(--muted); }
+  dd { margin: 0; color: var(--muted); font-size: 10pt; }
 </style>
 </head>
 <body>
 
-<!-- ============================ COVER ============================ -->
 <section class="cover">
   <div class="top">
-    <div class="eyebrow">User guide</div>
+    <div class="kicker">User guide</div>
     <h1>Indian Stock Data Hub</h1>
-    <p class="lede">A free, open-source research desk for Indian listed companies. Enter a few ticker symbols and get each company's key numbers, quarterly trends, latest filings, recent news and a plain-English analysis, then export it all to Excel and Word. The optional AI runs entirely on your own computer.</p>
+    <p class="lede">Look up any company listed in India and see, in plain English, how it's doing, what it has
+      promised, and whether anything in its reports should worry you. Free, private, and on your own computer.</p>
   </div>
   <div class="toc">
     <div><span>1</span>What the app does</div>
-    <div><span>2</span>Before you start</div>
-    <div><span>3</span>Install the app</div>
-    <div><span>4</span>Choose a model</div>
-    <div><span>5</span>Your first analysis</div>
-    <div><span>6</span>Reading the results</div>
-    <div><span>7</span>Analysing a whole watchlist</div>
-    <div><span>8</span>All the numbers, in one place</div>
-    <div><span>9</span>What changed since last time</div>
-    <div><span>10</span>What management promised</div>
-    <div><span>11</span>Your portfolio, and your trades</div>
-    <div><span>12</span>Screening what you have analysed</div>
-    <div><span>13</span>Comparing companies side by side</div>
-    <div><span>14</span>Searching everything you have downloaded</div>
-    <div><span>15</span>Ask AI: answers from your own data</div>
-    <div><span>16</span>Excel and Word reports</div>
-    <div><span>17</span>Finding ticker symbols</div>
-    <div><span>18</span>Privacy and how the AI is used</div>
-    <div><span>19</span>The Settings page</div>
-    <div><span>20</span>Keeping it light, and starting it automatically</div>
-    <div><span>21</span>Troubleshooting</div>
-    <div><span>22</span>Glossary</div>
+    <div><span>2</span>Set it up</div>
+    <div><span>3</span>Home</div>
+    <div><span>4</span>A company's page</div>
+    <div><span>5</span>Portfolio</div>
+    <div><span>6</span>Alerts</div>
+    <div><span>7</span>More tools</div>
+    <div><span>8</span>Make it yours</div>
+    <div><span>9</span>If something goes wrong</div>
+    <div><span>10</span>Words you might see</div>
   </div>
-  <div class="bottom">No paid APIs, no accounts, no cloud AI. Not investment advice: see chapter 18.</div>
+  <div class="bottom">Not investment advice. The AI can be wrong — use the app as a starting point for your own thinking.</div>
 </section>
 
-<!-- ============================ 1 ============================ -->
+<!-- 1 -->
 <section class="chapter">
   <div class="kicker">Chapter 1</div>
   <h2>What the app does</h2>
-  <p class="intro">You type in company tickers; the app collects public information about each one, organises it, and optionally asks a local AI model to summarise it.</p>
-
-  <div class="flow">
-    <div><b>1 · Collect</b>Ratios, quarterly results, pros and cons from screener.in</div><div class="arrow">→</div>
-    <div><b>2 · Download</b>The latest filings: concall transcripts, presentations, annual reports, results</div><div class="arrow">→</div>
-    <div><b>3 · Extract</b>Every number in those PDFs, with its page and the sentence it came from</div><div class="arrow">→</div>
-    <div><b>4 · News</b>Recent headlines from six news sources</div><div class="arrow">→</div>
-    <div><b>5 · Summarise</b>Your model writes a verdict, an analysis and a news digest</div><div class="arrow">→</div>
-    <div><b>6 · Keep</b>Everything is saved locally, searchable, and compared with last time</div>
-  </div>
-
+  <p class="intro">You type a company's name. The app gathers everything public about it and lays it out simply.</p>
   <div class="grid2">
     <div class="card">
-      <h3>What you get for each company</h3>
+      <h3>What you get</h3>
       <ul>
-        <li>Key ratios: market cap, price, P/E, ROE, ROCE and more</li>
-        <li>13 quarters of results, with trend charts</li>
-        <li>Strengths and risks</li>
-        <li>An AI verdict (Positive, Neutral or Cautious) with a short analysis</li>
-        <li>Recent news with an AI digest and sentiment</li>
-        <li>The downloaded filings, and every figure found inside them</li>
-        <li>A detailed table lining up every metric against every source that reports it</li>
-        <li>A list of what has changed since the last time you looked</li>
-        <li>What management promised on the earnings call, and whether it happened</li>
-        <li>A formatted Excel workbook and a Word report</li>
+        <li>Today's price and a price chart (daily candles, or a simple line if you prefer)</li>
+        <li>A short <b>AI summary</b> and a one-line view: <span class="badge b-good">Looks good</span>
+          <span class="badge b-mid">Mixed picture</span> <span class="badge b-bad">Be careful</span></li>
+        <li><b>Warning signs</b> from the annual report — for example, if the auditor had concerns</li>
+        <li>New company <b>announcements</b>, explained in three simple points</li>
+        <li>What the company's bosses <b>promised</b>, and whether they kept it</li>
+        <li>Your own portfolio, with alerts when something changes</li>
       </ul>
     </div>
     <div class="card">
       <h3>What it isn't</h3>
       <ul>
-        <li><strong>Not investment advice.</strong> The AI can be wrong. Use it as a starting point for your own research.</li>
-        <li><strong>Not real-time.</strong> Prices and ratios are as shown on screener.in when you run the analysis.</li>
-        <li><strong>Not a trading tool.</strong> It reads public information; it never connects to a broker.</li>
+        <li><b>Not advice.</b> It helps you understand a company; the decision is yours.</li>
+        <li><b>Not a trading app.</b> It never connects to your broker or your money.</li>
+        <li><b>Not in the cloud.</b> What you own stays on your computer.</li>
       </ul>
-      <p class="muted" style="margin-top:8pt">The AI part is optional. Without it you still get all the data, charts, news headlines, the detailed tables, the archive search and the reports.</p>
     </div>
   </div>
 </section>
 
-<!-- ============================ 2 ============================ -->
+<!-- 2 -->
 <section class="chapter">
   <div class="kicker">Chapter 2</div>
-  <h2>Before you start</h2>
-  <p class="intro">Here's what your computer needs. Setting everything up takes 15 to 30 minutes the first time, mostly waiting for downloads.</p>
-  <table>
-    <tr><th style="width:24%">You need</th><th>Details</th></tr>
-    <tr><td>A computer</td><td>Windows 10 or 11, macOS, or Linux</td></tr>
-    <tr><td>Python 3.10 or newer</td><td>The programming language the app is written in. Free from <a href="https://www.python.org/downloads/">python.org/downloads</a>. Chapter 3 shows how to check whether you already have it.</td></tr>
-    <tr><td>Internet connection</td><td>To fetch company data, filings and news. The AI itself works offline.</td></tr>
-    <tr><td>Disk space</td><td>About 500 MB for the app and its libraries, plus room for filings (roughly 10 to 40 MB per company). The AI model is extra: 0.4 to 8 GB.</td></tr>
-    <tr><td>Memory (RAM)</td><td>4 GB is enough without AI. For the recommended AI model, 16 GB or more.</td></tr>
-    <tr><td>A web browser</td><td>Chrome, Edge, Firefox or Safari. The app opens in your browser but runs on your computer.</td></tr>
-  </table>
-  <div class="note"><strong>New to the terminal?</strong> Some steps ask you to type commands. On Windows, open <strong>PowerShell</strong> (search for it in the Start menu). On macOS, open <strong>Terminal</strong> (press <kbd>⌘</kbd> <kbd>Space</kbd> and type "Terminal"). Type or paste each command, then press <kbd>Enter</kbd>. Lines starting with <code>#</code> in this guide are comments; you don't type them.</div>
+  <h2>Set it up</h2>
+  <p class="intro">About 15 minutes, once. The easiest way is to let an AI assistant do it for you.</p>
+
+  <h3>The easy way: ask an AI assistant</h3>
+  <p>Copy the message below into an AI assistant that can work on your computer — for example Claude Code, Claude
+    Desktop, ChatGPT's desktop app, Codex or Cursor. It will install everything and tell you when it's ready.
+    A chat-only assistant can't run anything itself, but it will walk you through each step.</p>
+<pre><code>Please set up the "Indian Stock Data Hub" app on my computer. I'm not
+technical, so do every step yourself where you can, explain anything I
+need to do in plain words, and check each step worked before moving on.
+
+1. Check that Python 3.10 or newer is installed (python3 --version, or
+   python --version on Windows). If not, install it from python.org. On
+   Windows, tick "Add python.exe to PATH" in the installer.
+2. Download the app into my Documents folder:
+   git clone https://github.com/tapariapurv/indian-stock-data-hub.git
+   (If git isn't available, download and unzip
+   https://github.com/tapariapurv/indian-stock-data-hub/archive/refs/heads/main.zip)
+3. In the app's folder, make a virtual environment and install the app:
+   python3 -m venv .venv
+   then  .venv/bin/python -m pip install -r requirements.txt
+   (Windows: .venv\Scripts\python -m pip install -r requirements.txt)
+4. Install Ollama, the free AI, from https://ollama.com/download and make
+   sure it's running. Download a model that suits my computer's memory:
+   "ollama pull gemma4:e2b" for 8 GB, "ollama pull gemma4:e4b" for 16 GB
+   or more.
+5. Start the app with  .venv/bin/python -m streamlit run app.py
+   (Windows: .venv\Scripts\python -m streamlit run app.py)
+   It opens at http://localhost:8501. In the app, go to Settings → AI,
+   choose Ollama, press "Check it works", pick the model, and press
+   "Save AI settings".
+6. Ask me whether I'd like the app to start by itself when I log in. If
+   yes, it's in Settings → Advanced → Speed &amp; memory → Start automatically.
+7. Finish by telling me, in two or three plain sentences, how to open the
+   app next time.
+
+Don't edit any of the app's files, and ask me before installing anything
+that costs money (nothing here should).</code></pre>
+
+  <h3>Doing it yourself</h3>
+  <div class="step"><div class="num">1</div><div>
+    <b>Install Python</b> from <a href="https://www.python.org/downloads/">python.org</a> (version 3.10 or newer).
+    On Windows, tick <b>"Add python.exe to PATH"</b> on the first installer screen.</div></div>
+  <div class="step"><div class="num">2</div><div>
+    <b>Download the app.</b> On its GitHub page, click the green <b>Code</b> button → <b>Download ZIP</b>, and unzip it
+    into your Documents folder.</div></div>
+  <div class="step"><div class="num">3</div><div>
+    <b>Install it.</b> Open Terminal (Mac) or PowerShell (Windows) in the app's folder and paste:
+    <pre><code>python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt</code></pre>
+    On Windows, use <code>python</code> instead of <code>python3</code>, and <code>.venv\Scripts\python</code> instead of <code>.venv/bin/python</code>.</div></div>
+  <div class="step"><div class="num">4</div><div>
+    <b>Start it</b> — this is the only step you repeat next time:
+    <pre><code>.venv/bin/python -m streamlit run app.py</code></pre>
+    Your browser opens the app. Keep the Terminal window open while you use it.</div></div>
+
+  <h3>Turn on the free AI (recommended)</h3>
+  <p>Everything works without AI except the summaries, <b>Explain</b> and <b>Ask AI</b>. To turn them on for free:</p>
+  <ol>
+    <li>Install <b>Ollama</b> from <a href="https://ollama.com/download">ollama.com/download</a> and open it.</li>
+    <li>In Terminal, download a model: <code>ollama pull gemma4:e2b</code> (or <code>gemma4:e4b</code> if your computer has 16 GB of memory or more).</li>
+    <li>In the app, open <b>Settings → AI</b>, choose <b>Ollama</b>, press <b>Check it works</b>, pick the model, and press <b>Save AI settings</b>.</li>
+  </ol>
+  <div class="note">The AI then runs on your own computer: it's free and nothing is sent anywhere. Paid AI services
+    (Claude, ChatGPT, Gemini) also work — pick one in <b>Settings → AI</b> and paste the key from its website. You can set a
+    monthly spending limit in <b>Settings → Spending</b>.</div>
 </section>
 
-<!-- ============================ 3 ============================ -->
+<!-- 3 -->
 <section class="chapter">
   <div class="kicker">Chapter 3</div>
-  <h2>Install the app</h2>
-  <p class="intro">Five steps, done once. After that, starting the app is a single command (step 5).</p>
+  <h2>Home</h2>
+  <p class="intro">Where the app opens. Everything you need at a glance.</p>
+  <ul>
+    <li><b>Look up any company</b> — click the search box and type part of a company's name or its symbol (small or
+      capital letters, either works). Every company listed on the NSE is in the list; untick <b>Include SMEs</b> to
+      leave out small and medium companies.</li>
+    <li><b>Worth today</b> — what your stocks are worth, and how much that changed today.</li>
+    <li><b>Needs your attention</b> — one line per stock when something happened: the AI's view changed, the company
+      published something important, a promise wasn't kept, or there's a warning sign in its annual report.
+      Hover over the <b>?</b> for details, or press <b>Open</b>.</li>
+    <li><b>Your stocks</b> — every stock you own. Tick the box beside one to open its page.</li>
+  </ul>
+  <p>The first time, Home shows three steps to get started instead.</p>
+  <figure><img src="images/home.jpg" alt="Home, with a made-up demo portfolio"><figcaption>Home, with a made-up demo portfolio, while typing in the search box</figcaption></figure>
 
-  <div class="step"><div class="num">1</div><div>
-    <h3>Check for Python, install it if needed</h3>
-    <div class="os">
-      <div><h4>Windows</h4><pre><code>python --version</code></pre>
-        If you see an error or a version below 3.10, download Python from <a href="https://www.python.org/downloads/">python.org</a>. <strong>On the first installer screen, tick "Add python.exe to PATH".</strong> Then close and reopen PowerShell.</div>
-      <div><h4>macOS / Linux</h4><pre><code>python3 --version</code></pre>
-        If it's missing or older than 3.10, install it from <a href="https://www.python.org/downloads/">python.org</a> (macOS), with Homebrew (<code>brew install python</code>), or with your Linux package manager.</div>
-    </div>
-  </div></div>
-
-  <div class="step"><div class="num">2</div><div>
-    <h3>Download the app</h3>
-    <p><strong>Easiest:</strong> on the project's GitHub page, click the green <strong>Code</strong> button, then <strong>Download ZIP</strong>. Unzip it somewhere easy to find, such as your Documents folder.</p>
-    <p><strong>With git</strong> (if you have it):</p>
-    <pre><code>git clone https://github.com/tapariapurv/indian-stock-data-hub.git</code></pre>
-    <p>Then move into the project folder. Replace the path with wherever you put it:</p>
-    <pre><code>cd Documents/indian-stock-data-hub</code></pre>
-  </div></div>
-
-  <div class="step"><div class="num">3</div><div>
-    <h3>Create a private Python environment</h3>
-    <p>This keeps the app's libraries separate from anything else on your computer. You do this once, inside the project folder.</p>
-    <div class="os">
-      <div><h4>Windows</h4><pre><code>python -m venv .venv
-.venv\Scripts\activate</code></pre></div>
-      <div><h4>macOS / Linux</h4><pre><code>python3 -m venv .venv
-source .venv/bin/activate</code></pre></div>
-    </div>
-    <p>Your prompt now starts with <code>(.venv)</code>. That means the environment is active.</p>
-    <div class="note warn"><strong>Windows says "running scripts is disabled"?</strong> Skip the activate line and put <code>.venv\Scripts\</code> in front of the commands in steps 4 and 5, for example <code>.venv\Scripts\python -m pip install -r requirements.txt</code>.</div>
-  </div></div>
-
-  <div class="step"><div class="num">4</div><div>
-    <h3>Install the app's libraries</h3>
-    <pre><code>python -m pip install -r requirements.txt</code></pre>
-    <p>This downloads Streamlit (the app framework), the PDF reader, and the Excel and Word writers. It takes a minute or two.</p>
-  </div></div>
-
-  <div class="step"><div class="num">5</div><div>
-    <h3>Start the app</h3>
-    <pre><code>python -m streamlit run app.py</code></pre>
-    <p>Your browser opens at <a href="http://localhost:8501">http://localhost:8501</a>. If it doesn't, open that address yourself. The first time, Streamlit may ask for an email address; just press <kbd>Enter</kbd> to skip.</p>
-    <p><strong>To stop the app</strong>, click the terminal window and press <kbd>Ctrl</kbd> <kbd>C</kbd>. <strong>To start it again another day</strong>, open a terminal in the project folder, activate the environment (step 3's second line), and run step 5.</p>
-  </div></div>
 </section>
 
-<!-- ============================ 4 ============================ -->
+<!-- 4 -->
 <section class="chapter">
   <div class="kicker">Chapter 4</div>
-  <h2>Choose a model</h2>
-  <p class="intro">The app works without any model at all. If you want the verdicts, the written analysis, the news digests, the transcript reading and the archive answers, you need to point it at one — and there are four quite different ways to do that. Pick whichever suits your machine, your budget and your privacy needs. You can change your mind at any time from <strong>Settings → Models &amp; keys</strong>; nothing else in the app changes.</p>
+  <h2>A company's page</h2>
+  <p class="intro">Everything about one company. Works for any listed company — you don't have to own it.</p>
+  <p>At the top: the price, what's <b>coming up</b> (results dates, dividends), and a price chart of daily candles (green up, red down) with the 50- and 200-day averages. Below the chart,
+    the app tells you whether the share is cheaper or dearer than usual for this company.</p>
+  <p>Press <b>Look into this company</b> to have the app read its latest numbers, reports and news (about a minute) — do it again any time to refresh.
+    To keep an eye on it, press <b>Add to my portfolio</b>. To be told when the price moves, press
+    <b>Tell me when the price moves</b>.</p>
+  <figure><img src="images/company.jpg" alt="The top of a company's page: price, what's coming up, and the chart"><figcaption>The top of a company's page: price, what's coming up, and the chart</figcaption></figure>
 
   <table>
-    <tr><th style="width:20%">Route</th><th>Good when</th><th>Cost</th><th>Your data</th></tr>
-    <tr><td><strong>A · Ollama</strong></td><td>You want the simplest local setup. This is the default.</td><td>Free</td><td>Never leaves the machine</td></tr>
-    <tr><td><strong>B · A local app</strong></td><td>You already use LM Studio, Jan, llama.cpp or similar.</td><td>Free</td><td>Never leaves the machine</td></tr>
-    <tr><td><strong>C · A hosted API</strong></td><td>You want the strongest models and don't mind paying.</td><td>You pay per token</td><td>Sent to that provider</td></tr>
-    <tr><td><strong>D · Your own server</strong></td><td>You have a GPU box, a work server or a rented instance.</td><td>Whatever it costs you</td><td>Stays on that server</td></tr>
-    <tr><td><strong>E · No model</strong></td><td>You only want the data, tables, charts and reports.</td><td>Free</td><td>Nothing to send</td></tr>
+    <tr><th>Section</th><th>What it shows</th></tr>
+    <tr><td>Summary</td><td>The AI's short summary, the key numbers, strengths, weaknesses and recent news.</td></tr>
+    <tr><td>Results</td><td>Sales and profit, quarter by quarter, with small trend charts.</td></tr>
+    <tr><td>Every number</td><td>Every figure found in the company's reports, with the page it came from.</td></tr>
+    <tr><td>What changed</td><td>What's different since the last time the app looked.</td></tr>
+    <tr><td>Promises kept?</td><td>What the bosses promised investors, and whether later results show they kept it.</td></tr>
+    <tr><td>Reports &amp; warnings</td><td>Warning signs in the annual report, the latest announcements (press
+      <b>Explain</b> for three simple points), and the reports the app read.</td></tr>
+    <tr><td>Past checks</td><td>Every earlier look at this company, so you can compare.</td></tr>
   </table>
-
-  <h3>Route A · Ollama on this computer</h3>
-  <div class="step"><div class="num">1</div><div>
-    <h3>Install it</h3>
-    <p>Download from <a href="https://ollama.com/download">ollama.com/download</a>. On Windows and macOS it is an ordinary installer; on Linux run <code>curl -fsSL https://ollama.com/install.sh | sh</code>. Version 0.9 or newer is needed.</p>
-  </div></div>
-  <div class="step"><div class="num">2</div><div>
-    <h3>Check it is running</h3>
-    <p>Open <a href="http://localhost:11434">http://localhost:11434</a> in a browser. It should say <em>Ollama is running</em>. On Windows and macOS it starts with the computer; on Linux you may need <code>ollama serve</code>.</p>
-  </div></div>
-  <div class="step"><div class="num">3</div><div>
-    <h3>Download a model that fits your machine</h3>
-    <p>Browse <a href="https://ollama.com/library">ollama.com/library</a> and pull one with <code>ollama pull &lt;name&gt;</code>. Any chat model works. The thing that matters is size: a model needs to fit in memory alongside everything else you are running, and a rough guide is that the download size is close to the memory it will want.</p>
-    <table>
-      <tr><th style="width:20%">Your RAM</th><th>Aim for</th><th>What to expect</th></tr>
-      <tr><td>8 GB</td><td>A model of about 1–2 GB</td><td><span class="tag low">Basic</span> Fast, but small models misread financial context — one we tested called a 7.6% return on equity a "strong position". Treat the verdicts with real caution.</td></tr>
-      <tr><td>16 GB</td><td>A model of about 4–8 GB</td><td><span class="tag best">The sweet spot</span> Accurate summaries that quote the right numbers, typically a second or three each.</td></tr>
-      <tr><td>24 GB or more</td><td>A model of 8 GB and up</td><td>Better written analysis and noticeably better at reading transcripts. Slower per answer.</td></tr>
-    </table>
-    <p class="muted" style="margin:0">Names and versions change constantly, so this guide deliberately doesn't recommend one. Sort the library by popularity and take a recent general-purpose chat model in your size bracket. Avoid anything labelled <em>embedding</em> — the app hides those, because they cannot write.</p>
-  </div></div>
-  <div class="step"><div class="num">4</div><div>
-    <h3>Point the app at it</h3>
-    <p>Go to <strong>Settings → Models &amp; keys</strong>, choose <em>Ollama (local)</em>, and press <strong>Test connection</strong>. Every model you have pulled appears in the list with its size. Pick one and save. The research sidebar also has a model dropdown, so you can switch between your installed models for a single run without changing the saved setting.</p>
-  </div></div>
-
-  <h3>Route B · An app you already run locally</h3>
-  <p>LM Studio, Jan, llama.cpp's server, text-generation-webui and most others can expose an OpenAI-compatible endpoint. Turn that server on in the app's own settings and note the address it prints — commonly something like <code>http://localhost:1234/v1</code>. Then in <strong>Settings → Models &amp; keys</strong> choose <em>Custom / self-hosted</em>, paste that address, leave the key empty, and press <strong>Test connection</strong>. The models that app has loaded will appear in the list.</p>
-
-  <h3>Route C · A hosted API</h3>
-  <p>Anthropic, OpenAI, Google and OpenRouter are supported directly. OpenRouter is worth knowing about: one key gives you access to models from many companies, which is handy if you want to try several without opening several accounts.</p>
-  <table>
-    <tr><th>Provider</th><th>Get a key from</th><th>Environment variable</th></tr>
-    <tr><td>Anthropic (Claude)</td><td>console.anthropic.com</td><td><code>ANTHROPIC_API_KEY</code></td></tr>
-    <tr><td>OpenAI</td><td>platform.openai.com</td><td><code>OPENAI_API_KEY</code></td></tr>
-    <tr><td>Google (Gemini)</td><td>aistudio.google.com</td><td><code>GOOGLE_API_KEY</code></td></tr>
-    <tr><td>OpenRouter</td><td>openrouter.ai</td><td><code>OPENROUTER_API_KEY</code></td></tr>
-  </table>
-  <p>Sign up, create an API key, then paste it into <strong>Settings → Models &amp; keys</strong> and press <strong>Test connection</strong>; the provider's models load into the dropdown. Two notes on keys. They are saved in <code>settings.json</code> beside the app, readable only by your user account and never committed to git — but if you would rather not store one at all, set the environment variable above instead and leave the box empty, because the app always prefers the variable. And a hosted model means the scraped ratios, headlines and retrieved passages are sent to that company; nothing else is.</p>
-
-  <h3>Route D · A server somewhere else</h3>
-  <p>A faster machine on your network, a work server, or a GPU instance you rent by the hour. If it runs Ollama, choose <em>Ollama (local)</em> and replace the address with that machine's, for example <code>http://192.168.1.20:11434</code>. If it speaks the OpenAI API, choose <em>Custom / self-hosted</em> and give it the address and a key if it needs one. Either way the app behaves exactly as it does locally.</p>
-  <p class="muted">Remember that the remote machine must be reachable from this one, and that Ollama only listens to other computers if it was started with <code>OLLAMA_HOST=0.0.0.0</code> on that machine.</p>
-
-  <h3>Route E · No model at all</h3>
-  <p>Turn off <strong>Use a model</strong> in Settings, or just never set one up. You keep every ratio, every quarterly table, every extracted figure, the correlated numbers, the news headlines, the archive keyword search, the saved history and both reports. What you lose is the written verdict, the analysis paragraph, the news digest, transcript reading and the archive's ability to reason about what it finds.</p>
-
-  <h3>Keeping a paid model on a leash</h3>
-  <p>If you choose a hosted API, set your limits before your first big run. Open <strong>Settings → Spending</strong> and you will find three:</p>
-  <table>
-    <tr><th style="width:26%">Limit</th><th>What it does</th></tr>
-    <tr><td>Tokens per run</td><td>The one that actually saves you. A fifty-company watchlist against an expensive model can spend a month's budget in a single click; this stops the run instead.</td></tr>
-    <tr><td>Monthly limit</td><td>A ceiling in your own currency, counted from the first of the month.</td></tr>
-    <tr><td>Monthly token limit</td><td>The same idea counted in tokens, useful when you are on a free tier with an allowance.</td></tr>
-  </table>
-  <p>A call that would cross a limit is refused before it is sent, so a limit cannot be passed by accident; the app tells you plainly that it stopped, and everything else in the run carries on as normal. For the money figures to mean anything, enter what your provider charges per million tokens — input and output — next to its key. The app does not ship a price list, because prices change and a stale one would be worse than none. Local models are always free, are recorded as free, and are never blocked by a limit.</p>
-  <figure><img src="images/spending.jpg" alt="Settings, Spending tab"><figcaption>Settings → Spending: what has been spent this month, and the limits that stop a call before it is sent.</figcaption></figure>
-  <p>For scale: a company review is about 400 tokens, a news digest about 300, and an archive question about 2,800 including the search steps. Answers are cached, so re-running the same company costs nothing at all.</p>
+  <figure><img src="images/company-summary.jpg" alt="The Summary section"><figcaption>The Summary section</figcaption></figure>
+  <figure><img src="images/warnings.jpg" alt="Reports &amp; warnings: warning signs, announcements with Explain, and the reports read"><figcaption>Reports &amp; warnings: warning signs, announcements with Explain, and the reports read</figcaption></figure>
+  <h3>The warning signs it looks for</h3>
+  <ul>
+    <li><b>Auditor concern</b> — the company's auditor wasn't fully happy with the accounts.</li>
+    <li><b>Accounting rules changed</b> — the company changed how it counts things, which can flatter results.</li>
+    <li><b>Loans to related companies</b> — money lent to companies linked to the owners jumped sharply.</li>
+    <li><b>Pending claim</b> — tax demands or legal claims the company hasn't agreed to pay.</li>
+  </ul>
+  <div class="note">These are found by searching the report for tell-tale phrases — no AI involved — and each shows its
+    page number so you can read it yourself.</div>
 </section>
 
-<!-- ============================ 5 ============================ -->
+<!-- 5 -->
 <section class="chapter">
   <div class="kicker">Chapter 5</div>
-  <h2>Your first analysis</h2>
-  <p class="intro">Everything is controlled from the sidebar on the left. The defaults work well, so you can simply press <strong>Run analysis</strong>.</p>
-  <figure><img src="images/overview.jpg" alt="The app after an analysis" style="max-height:76mm; width:auto; margin:0 auto"><figcaption>The app after analysing three companies: sidebar on the left, summary tiles and export buttons at the top, one card per company below.</figcaption></figure>
-  <table>
-    <tr><th style="width:26%">Sidebar control</th><th>What it does</th></tr>
-    <tr><td><strong>Tickers</strong></td><td>The companies to analyse, separated by commas, e.g. <code>RELIANCE, TCS, INFY</code>. Use screener.in symbols; chapter 17 shows how to find them. Start with 1 to 5 companies.</td></tr>
-    <tr><td><strong>Filings to download</strong></td><td>Click to turn each filing type on or off: concall transcripts, investor presentations, annual reports and quarterly results. Fewer types means a faster run.</td></tr>
-    <tr><td><strong>Timeframe</strong></td><td>How many of each filing to fetch: latest only (fastest), the last 2 or 4, or all available.</td></tr>
-    <tr><td><strong>Local AI switch</strong></td><td>Turns the AI verdicts, analyses and news digests on or off. Greyed out if Ollama isn't running.</td></tr>
-    <tr><td><strong>Model</strong></td><td>Which model to use for this run, from whichever provider you set up in chapter 4. Changing it here applies to this run only.</td></tr>
-    <tr><td><strong>Run analysis</strong></td><td>Starts the run. Changes to the controls above only apply when you press it.</td></tr>
-    <tr><td><strong>User guide (PDF)</strong></td><td>Opens this guide.</td></tr>
-  </table>
-  <p style="margin-top:4pt"><strong>How long does it take?</strong> The first run for a company takes 20 to 60 seconds, mostly downloading and reading its PDFs. A progress bar shows which company is being processed. Results are remembered for an hour, so re-running is almost instant, and downloaded PDFs are kept in the <code>downloads</code> folder so they are never fetched twice.</p>
-</section>
-
-<!-- ============================ 6 ============================ -->
-<section class="chapter">
-  <div class="kicker">Chapter 6</div>
-  <h2>Reading the results</h2>
-  <p class="intro">Results are organised into three tabs: <strong>Overview</strong>, <strong>Financials</strong> and <strong>Filings</strong>.</p>
-
-  <h3>Overview: one card per company</h3>
-  <figure><img src="images/company-and-news.jpg" alt="A company card with news"><figcaption>A company card: the AI analysis, key ratios, strengths and risks, and recent news with its AI digest.</figcaption></figure>
-  <ul>
-    <li><strong>AI verdict</strong> (green Positive, amber Neutral, red Cautious) and a short analysis. The line under it names the model that wrote it and how many tokens it used.</li>
-    <li><strong>Key ratios</strong> as shown on screener.in. See the glossary for what each one means.</li>
-    <li><strong>Strengths and risks</strong>: screener.in's automatic pros and cons.</li>
-    <li><strong>Recent news</strong>: up to 8 headlines from the last 14 days, a short AI digest, and an overall sentiment (Positive, Mixed or Negative). Click a headline to read the article.</li>
-    <li><strong>Figures extracted from filings</strong>: click to open a searchable table of every number found in the downloaded PDFs, with its page and the sentence it came from. These are found by pattern matching, so check the context before relying on one.</li>
-  </ul>
-
-  <h3>Where the verdict comes from</h3>
-  <p>The one-word verdict is <em>not</em> the model's opinion. It is worked out by the app, from the ratios, using three rules applied in order:</p>
-  <table>
-    <tr><th>Verdict</th><th>When</th></tr>
-    <tr><td><strong>Cautious</strong></td><td>Return on equity below 12%, <em>or</em> debt to equity above 1.5, <em>or</em> net profit fell between the two quarters shown.</td></tr>
-    <tr><td><strong>Positive</strong></td><td>Return on equity above 18% <em>and</em> net profit rose between the two quarters shown.</td></tr>
-    <tr><td><strong>Neutral</strong></td><td>Everything else.</td></tr>
-  </table>
-  <p>The model is told the verdict and asked only to explain it in plain English, quoting the figures behind it. This is deliberate: small local models are poor at comparing numbers — one we tested called a 7.6% return on equity a "strong position" every single time — but good at writing a sentence about figures they have been handed. Doing the arithmetic in code makes the badge identical whichever model you use, and costs nothing.</p>
-  <p>Where the ratios needed are missing, there is no rule to apply and the model is asked for the verdict after all.</p>
-  <div class="note warn"><strong>They are rules of thumb, not a valuation.</strong> A good company can be Cautious for a quarter, and a weak one Neutral. They exist so the badge means the same thing every time — read the analysis and the numbers, not just the colour.</div>
-
-  <h3>Financials: trends at a glance</h3>
-  <figure><img src="images/financials.jpg" alt="The Financials tab"><figcaption>The Financials tab: latest-quarter figures with their change from the previous quarter, a sales-versus-profit chart, and the full results table.</figcaption></figure>
-  <p>Pick a company at the top. The four cards show the latest quarter's sales, net profit, operating margin and EPS. The small arrow shows the change from the previous quarter; the line underneath shows the last 8 quarters. Below are a chart of 13 quarters and the complete table, which you can download as CSV.</p>
-
-  <h3>The other tabs</h3>
-  <p><strong>All numbers</strong> lines every metric up against every source that reports it, and lets you search all the extracted figures. <strong>What changed</strong> compares this run with the last saved one. <strong>Guidance</strong> tracks what management promised on the earnings call. Each has a chapter of its own later in this guide.</p>
-
-  <h3>Filings: the source documents</h3>
-  <p>For each company: which filings were downloaded (or why one was skipped, for example because it was larger than 25 MB or wasn't a PDF), with links to the originals. Expand <em>All document links</em> to see every document screener.in lists for the company.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 7</div>
-  <h2>Analysing a whole watchlist</h2>
-  <p class="intro">Typing tickers one at a time is fine for three companies. For thirty, hand the app a file.</p>
-
-  <h3>The file it expects</h3>
-  <p>A CSV or Excel file with a column headed <code>ticker</code>. Anything else in the file is ignored, so your existing watchlist export will usually work as it is. If there is no column called <code>ticker</code>, the app also accepts <code>symbol</code>, <code>scrip</code>, <code>code</code> or <code>NSE code</code>, and failing all of those it reads the first column.</p>
-  <table>
-    <tr><th>ticker</th><th>notes</th></tr>
-    <tr><td>RELIANCE</td><td>core holding</td></tr>
-    <tr><td>TCS</td><td></td></tr>
-    <tr><td>INFY</td><td>watching</td></tr>
-  </table>
-  <p>The sidebar has a <strong>Watchlist template (CSV)</strong> button that downloads exactly this file, already filled in with three examples. Open it in Excel, replace the rows, save, and upload it.</p>
-
-  <h3>Running it</h3>
-  <p>Click <strong>Upload</strong> in the sidebar, choose your file, and press <strong>Run analysis</strong>. The uploaded list replaces whatever is in the Tickers box for that run. Duplicates are removed and anything that isn't a plausible symbol is skipped, so a stray heading row or a blank line does no harm.</p>
-
-  <h3>How long it takes</h3>
-  <p>Budget roughly five to fifteen seconds per company on the first run, depending on how many filings you asked for and how fast your model is. The app pauses briefly between companies on purpose — the sites it reads are free and public, and hammering them is both rude and a good way to get blocked. You can shorten or lengthen that pause in <strong>Settings → Data &amp; scraping</strong>.</p>
-  <p>Second and later runs are far quicker. A filing that has already been read is never read again, and an analysis of unchanged data comes straight back from the cache at no cost — the token counter will say <em>0 tokens this run</em>.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 8</div>
-  <h2>All the numbers, in one place</h2>
-  <p class="intro">The summary tells you the story. The <strong>All numbers</strong> tab shows you every number behind it, with each source of that number lined up beside the others.</p>
-  <figure><img src="images/all-numbers.jpg" alt="The All numbers tab"><figcaption>The All numbers tab: one row per metric, with the latest quarters beside what every filing says about it.</figcaption></figure>
-
-  <h3>What the table shows</h3>
-  <p>One row per metric. Reading across, you get the value screener.in publishes, what the last two quarters reported and the change between them, then how the downloaded filings describe the same metric: how many times it appears, the most recent value, and the lowest, middle and highest of every mention.</p>
-  <table>
-    <tr><th>Column</th><th>What it means</th></tr>
-    <tr><td>Screener ratio</td><td>The figure shown on the company's screener.in page.</td></tr>
-    <tr><td>Latest / Previous quarter</td><td>From the quarterly results table, in ₹ crore or per cent.</td></tr>
-    <tr><td>QoQ</td><td>Change from the previous quarter to the latest one.</td></tr>
-    <tr><td>In filings</td><td>How many times this metric was found across the PDFs.</td></tr>
-    <tr><td>Filing latest</td><td>The first mention in the most recent document.</td></tr>
-    <tr><td>Filing low / median / high</td><td>The spread across every mention.</td></tr>
-    <tr><td>Sources</td><td>Which kinds of filing the number came from.</td></tr>
-  </table>
-
-  <h3>Why the spread matters</h3>
-  <p>A wide gap between <em>low</em> and <em>high</em> is a warning, not an error. It usually means the label caught more than one kind of number — a figure in crore on one page and the same metric as a percentage on another, or a table header that lined up with the wrong column. When something looks odd, use the figures table underneath: it shows every extracted number with its page and the exact sentence it came from, so you can check the source in seconds.</p>
-
-  <h3>Finding a number</h3>
-  <p><strong>Recognised metrics only</strong> is on by default, and limits the table to metrics the app could identify. Turn it off to see every label the extractor produced, including the rough ones. Below, the figures table can be filtered by filing type and category, or searched by text — typing <code>margin</code> finds every mention of margin across every downloaded document for that company.</p>
-  <p>Both tables download as CSV, and the whole thing also arrives as an <strong>All numbers</strong> sheet in the Excel workbook and a cross-checked table in the Word report.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 9</div>
-  <h2>What changed since last time</h2>
-  <p class="intro">Every analysis is saved. The next time you run the same company, the app tells you what moved.</p>
-
-  <h3>The What changed tab</h3>
-  <p>After a run, this tab compares each company with the last saved analysis of it and lists the differences: ratios that moved, strengths and risks that appeared or disappeared, filings that are new since you last looked, headlines you haven't seen, and any change in the AI's verdict. The first time you analyse a company there is nothing to compare, so the tab says so; run it again next week and it fills up.</p>
-  <p>This comparison is plain arithmetic and text matching. No model is involved, deliberately — a "what changed" list that could invent a change would be worse than no list at all.</p>
-
-  <h3>The History page</h3>
-  <p>The <strong>History</strong> page in the sidebar holds every saved analysis. Pick a company and a date to reopen exactly what the app showed you then: the verdict, the ratios, the strengths and risks, the news and the full correlated table. Above it, a chart plots any ratio across all your saved runs, so you can watch the P/E or the ROE drift over months without keeping a spreadsheet.</p>
-  <p>Each saved analysis also shows what changed between it and the run before it, so you can step back through a company's history one analysis at a time.</p>
-
-  <h3>Getting back to the paper</h3>
-  <p>A saved analysis is only worth having if you can trace it. Under <strong>Where this came from</strong>, every filing behind that run is listed with the file it was saved as, the full path to it on your disk, the span of pages its figures came from, and a link to the original document on the exchange or company website. In the numbers table, each metric carries a <strong>Pages</strong> column listing the exact pages that figure appeared on — so checking a number means opening the PDF and turning to the page, not hunting through sixty of them.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 10</div>
-  <h2>What management promised</h2>
-  <p class="intro">Every quarter, management says things on the earnings call: margins will improve, growth will pick up, capex will land at a number. Nobody ever checks. This does.</p>
-
-  <h3>Reading the transcript</h3>
-  <p>Open the <strong>Guidance</strong> tab and press <strong>Read the latest transcript</strong>. The app finds the sentences where management commits to a future outcome and files each one as a metric, a commitment and a deadline. You need a concall transcript downloaded for that company, so tick <strong>Concall Transcript</strong> in the sidebar before the run.</p>
-  <p>This is extraction, not judgement, which is exactly what small local models are good at. The app filters the transcript down to the couple of dozen candidate sentences first, so reading a sixty-page transcript costs a few hundred tokens rather than tens of thousands.</p>
-
-  <h3>Checking it later</h3>
-  <p>Once a later quarter has been reported, press <strong>Check against results</strong>. Each commitment from an earlier quarter is graded <span class="tag">Delivered</span>, <span class="tag">Missed</span> or <span class="tag">Unclear</span> against the numbers the app has actually scraped — never against anything the model remembers. The <strong>Delivered</strong> counter at the top is the useful number: it tells you, over time, how often this management does what it says it will.</p>
-
-  <p>Treat a single grade as a prompt to go and read the transcript yourself, not as a verdict. Treat a pattern across eight quarters as worth knowing.</p>
-</section>
-
-<!-- ============================ PORTFOLIO ============================ -->
-<section class="chapter">
-  <div class="kicker">Chapter 11</div>
-  <h2>Your portfolio, and your trades</h2>
-  <p class="intro">The Research page answers "what is this company like?". The Portfolio page answers "what do I own, what is it worth, and how have I actually done?" — and it keeps working in the background while you get on with something else.</p>
-
-  <h3>Accounts and holdings</h3>
-  <p>A portfolio is made of <b>accounts</b> — call them what you like: <i>Long term</i>, <i>Trading</i>, <i>Mum's</i>. Search any NSE or BSE listed company and add it to one. Quantity and buy price are optional: leave them blank and the app is a watchlist; fill them in and it shows value, profit and loss, and how much of your money sits in any one stock or sector.</p>
-  <figure><img src="images/portfolio.jpg" alt="The Portfolio page"><figcaption>A demo portfolio across two accounts: value and P&amp;L, today's movers, the AI verdicts, and where the money sits.</figcaption></figure>
-  <p>Adding a stock queues its first full analysis in the background — the same scrape, filings and verdict the Research page produces. You do not have to wait for it.</p>
-  <div class="note">
-    <b>Nothing leaves your computer.</b> Accounts, quantities and buy prices live in <code>~/.stock-data-hub</code>, outside the app folder, so updating the app never touches them. Prices are looked up by ticker symbol alone.
-  </div>
-
-  <h3>Trades: what you actually bought and sold</h3>
-  <p>A quantity and an average price are a snapshot. They cannot tell you what you made on the shares you already sold, or what your money actually earned. The <b>Trades</b> section fixes that: record each buy and sell — date, quantity, price, and any brokerage — and the app works the rest out.</p>
-  <ul>
-    <li><b>What you still hold</b> and its average cost, recalculated from your trades. You no longer type these in; they are derived.</li>
-    <li><b>Realised gains</b>, matched <b>first-in first-out</b> — the oldest shares are treated as sold first, which is the basis Indian equity taxation uses. Charges are counted inside the cost of a buy and taken off the proceeds of a sell, so a round trip eaten entirely by brokerage correctly shows as no profit.</li>
-    <li><b>Short term or long term</b>, split at the twelve-month line, and totalled per financial year (April to March).</li>
-    <li><b>A money-weighted return (XIRR)</b> — what your money earned given <i>when</i> you put it in and took it out. Two people can own the same stock and earn very different returns depending on when they bought; this is the number that shows it.</li>
-  </ul>
-  <div class="note warn">
-    <b>This is a record of your trades, not tax advice.</b> The app splits short from long term and totals each, but deliberately does not calculate tax owed: rates, surcharges and exemptions change, and a stale rate built into an app is worse than none at all. Take the figures to whoever does your return.
-  </div>
-  <p>A stock with no trades recorded keeps whatever quantity and price you typed in, so nothing changes until you choose to use this. If you sell more shares than the app has purchases for, it says so rather than inventing a cost.</p>
-
-  <h3>Allocation, alerts and the weekly digest</h3>
-  <p><b>Allocation</b> shows where your money actually sits, by sector and by company size, and warns when one stock or one sector grows past the limits you set in Settings. <b>Alerts</b> collects changed verdicts, new filings, missed guidance and your own price alerts into an inbox, and can send them as a notification or an email. <b>Digest</b> is the weekly summary of all of it.</p>
-
-  <h3>The Stock page</h3>
-  <p>Clicking any holding opens its own page: a candlestick chart with 50- and 200-day averages, upcoming results and dividend dates, every analysis ever saved for it, and one line that is hard to get anywhere else — <b>today's P/E against the company's own five-year range</b>.</p>
-  <figure><img src="images/stock.jpg" alt="The Stock page"><figcaption>The Stock page: price chart with 50- and 200-day averages, today's P/E against its own five-year range, and the latest analysis in the same tabs as the Research page.</figcaption></figure>
-  <p>A P/E on its own says very little; 43 is cheap for one business and dear for another. Against its own history it starts to mean something: "43, and the 42nd percentile of its own five-year range" says this company has usually been more expensive than it is today. The app shows the low, median and high alongside it.</p>
-  <div class="note">
-    <b>Read it as a question, not an answer.</b> It compares a company only with its own past, never with its peers, and a company can be re-rated for perfectly good reasons — or stay cheap for perfectly bad ones. A loss-making period has no meaningful P/E, so nothing is shown at all.
-  </div>
-  <p>Below it, the latest analysis opens in <b>the same tabs as the Research page</b> — Overview, Financials, All numbers, What changed, Guidance and Filings — so everything you can read about a company you just researched, you can read about one you hold, without running it again. <b>What changed</b> compares the two most recent analyses, and an extra <b>Analysis history</b> tab lists every run with its verdict.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 12</div>
-  <h2>Screening what you have analysed</h2>
-  <p class="intro">Once you have analysed a few dozen companies, the interesting question stops being "what is this one like?" and becomes "which of these meet my conditions?". The Screener page answers that, using queries that read like screener.in's own.</p>
-  <figure><img src="images/screener.jpg" alt="The Screener page"><figcaption>A screen across five analysed companies: conditions in plain text, ready-made screens on the right, results with each company's latest verdict.</figcaption></figure>
-
-  <div class="note">
-    <b>It screens your archive, not the whole market.</b> The universe is every company the app has analysed, taking the newest saved analysis of each. It grows as you use the app — analyse a watchlist on the Research page, or add stocks to a portfolio and let the background refresher work through them. It will never surface a company you have never looked at.
-  </div>
-
-  <h3>Writing a query</h3>
-  <p>Conditions are a field, a comparison and a value, joined with <code>AND</code> and <code>OR</code>:</p>
-  <pre><code>ROE &gt; 15 AND P/E &lt; 25
-ROCE &gt; 20 AND Sales Growth &gt; 15 OR Sector = Banks</code></pre>
-  <p><code>AND</code> binds tighter than <code>OR</code>, exactly as on screener.in: the second line means "(ROCE above 20 and sales growth above 15) or (anything in Banks)". Queries are read by the app itself, never handed to Python to execute, so a malformed query gives you a plain error message rather than doing anything unexpected.</p>
-  <p>Field names are forgiving. <code>ROE</code>, <code>roe</code> and <code>return on equity</code> are the same field; so are <code>P/E</code>, <code>pe</code> and <code>price to earning</code>. The <b>Fields you can use</b> panel on the right lists every name and the units it expects — get one wrong and the error says which.</p>
-
-  <table>
-    <tr><th>Field</th><th>Unit</th><th>Where it comes from</th></tr>
-    <tr><td>Market Cap, Current Price, Book Value</td><td>₹ Cr / ₹</td><td>screener.in's ratios</td></tr>
-    <tr><td>P/E, Price to Book</td><td>ratio</td><td>screener.in; price-to-book is worked out from price and book value</td></tr>
-    <tr><td>ROCE, ROE, OPM, Dividend Yield</td><td>%</td><td>screener.in; OPM from the latest quarter</td></tr>
-    <tr><td>Sales Growth, Profit Growth</td><td>% year on year</td><td>the latest quarter against the same quarter a year earlier</td></tr>
-    <tr><td>Sector, Verdict</td><td>text</td><td>screener.in's sector; the app's own verdict</td></tr>
-    <tr><td>Guidance Score</td><td>%</td><td>how many of management's graded promises were delivered</td></tr>
-    <tr><td>Guidance Checked</td><td>count</td><td>how many promises have actually been graded</td></tr>
-  </table>
-  <p>Sector and Verdict hold text, so they only accept <code>=</code> and <code>!=</code>, and they match on part of the word — <code>Sector = Bank</code> finds "Banks" and "Private Banks" alike.</p>
-
-  <h3>Screening on whether management keeps its word</h3>
-  <p>The last two fields exist nowhere else, because they are built from the app's own records. Chapter 10 explains how commitments are pulled out of earnings calls and graded against the results that followed; <b>Guidance Score</b> turns that history into a number you can sort on.</p>
-  <pre><code>Guidance Score &gt; 60 AND Guidance Checked &gt;= 3</code></pre>
-  <p>The second half matters. One kept promise is not a track record, so the ready-made <b>Management keeps its word</b> screen insists on at least three graded commitments before it will believe a score.</p>
-  <div class="note">
-    <b>Only graded promises count.</b> A commitment the app has filed but not yet checked is not evidence either way, and one graded <i>Unclear</i> — where the reported results simply do not cover it — is not a miss. A company with nothing graded has no score at all, rather than a score of zero, so it is never caught by a query like <code>Guidance Score &lt; 50</code>.
-  </div>
-
-  <h3>Ready-made screens, and your own</h3>
-  <p>The pills on the right fill the box for you: <i>Quality at a fair price</i>, <i>Growing fast</i>, <i>Dividend payers</i>, <i>Cheap on book</i>, <i>AI likes it</i> and <i>Management keeps its word</i>. Change one to taste, then <b>Save screen</b> under a name of your own and it joins the list. Saved screens live in the same local database as everything else.</p>
-  <p>Results show the fields you screened on first, then a few standard columns. Every figure comes from a saved analysis, so a stock you have not re-analysed for a month is screened on month-old numbers — the <b>Analysed</b> column tells you which.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 13</div>
-  <h2>Comparing companies side by side</h2>
-  <p class="intro">A screen narrows a list. The Compare page is for the two or three names left at the end of it.</p>
-
-  <p>Pick between two and four companies from everything you have analysed. If you hold any of them, the page starts with yours already selected. Each gets a card with its name, sector and current verdict, and underneath is a single table of the figures that usually decide it:</p>
-  <p>market capitalisation, price, P/E, price to book, ROCE, ROE, operating margin, sales growth, profit growth and dividend yield.</p>
-
-  <h3>Reading the table</h3>
-  <p>One cell on each row is shaded green: the leader on that measure. The app knows which direction is good — <b>lowest</b> wins for the valuation multiples (P/E and price to book), <b>highest</b> wins for everything else. A row where fewer than two companies have a figure is left unshaded, because there is nothing to lead.</p>
-  <div class="note warn">
-    <b>Green means "highest" or "lowest", not "best".</b> The cheapest P/E in a group is often the company the market trusts least, and the highest growth can be one good quarter against a weak one. The shading is there to save you scanning ten rows of numbers, not to pick for you.
-  </div>
-
-  <h3>The price chart</h3>
-  <p>Below the table, a year of share prices with every company rebased to 100 on the first day, so the lines answer "which of these has done better since last year?" regardless of whether one trades at ₹80 and another at ₹8,000.</p>
-  <p>Figures come from each company's latest saved analysis, so re-run anything that looks stale before drawing conclusions. Two companies are needed before the page shows anything at all.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 14</div>
-  <h2>Searching everything you have downloaded</h2>
-  <p class="intro">Every filing the app downloads stays on your machine and stays searchable — across companies, with no network and no cost per search.</p>
-
-  <h3>Asking a real question</h3>
-  <p>When a filing is read, its text is stored in a small database alongside the extracted figures. The <strong>Archive</strong> page searches all of it at once. Type a question the way you would ask a colleague — <em>what did management say about capex and expansion plans?</em> — and leave <strong>Let the model do the searching and answer</strong> switched on.</p>
-  <p>Four things then happen, and the model does the two that need judgement:</p>
-  <table>
-    <tr><th style="width:22%">Step</th><th>What happens</th></tr>
-    <tr><td>1 · Vocabulary</td><td>The model lists the words a filing would really use. Ask about "capex" and it adds <em>capital expenditure</em>, <em>expansion plans</em>, <em>growth strategy</em>, <em>investment plans</em>. This is the step plain keyword search cannot do: the gap between your question and a transcript is wording, not logic.</td></tr>
-    <tr><td>2 · Retrieval</td><td>The database finds the pages matching any of those terms and ranks them by relevance.</td></tr>
-    <tr><td>3 · Judgement</td><td>The model reads the shortlist and throws out the coincidences — the page about <em>share capital</em> when you asked about <em>capital expenditure</em>.</td></tr>
-    <tr><td>4 · Answer</td><td>It answers from the passages that survive, quoting the figures and citing each passage as [1], [2] after the claim.</td></tr>
-  </table>
-  <p>On a real Reliance archive, asking about capex returned an answer citing a capital expenditure of about ₹39,000 crore, drawing on both the concall transcript and the annual report — in six seconds, on a laptop, for about 2,800 tokens. The model only ever sees the passages retrieved from your own documents, so the answer is grounded in the filings rather than in whatever it happens to remember about the company.</p>
-  <p>Every result shows which company, which filing and which page it came from, along with where that PDF sits on your disk, so you can always go and read the original. You can narrow a search to particular companies or filing types, and expand any result to read the full page.</p>
-  <p>Switch the toggle off — or run without a model at all — and you still get plain keyword search. It just cannot reason about what it finds.</p>
-</section>
-
-<section class="chapter">
-  <div class="kicker">Chapter 15</div>
-  <h2>Ask AI: answers from your own data</h2>
-  <p class="intro">The Archive page finds passages. Ask AI answers questions — in plain English, from your portfolio, your saved analyses and your downloaded filings, with every company figure cited back to where it came from.</p>
-
-  <h3>What it can see</h3>
-  <p>For each question the app gathers up to three kinds of grounding, cheapest first, numbers them, and hands them to the model as sources:</p>
-  <table>
-    <tr><th>Source</th><th>When it is included</th></tr>
-    <tr><td><b>Your portfolio</b></td><td>When you ask about "my holdings", "which of my…", or anything without a company name. One row per stock: verdict, price, today's move, P/E, ROE, ROCE and growth.</td></tr>
-    <tr><td><b>A saved analysis</b></td><td>For every company you name — its ratios, quarterly figures, strengths, risks and recent headlines, from the most recent run.</td></tr>
-    <tr><td><b>Filing passages</b></td><td>The best-matching pages from your downloaded concalls, presentations and annual reports. When your words don't match the filing's — you say "capex", it says "capital expenditure" — the model supplies the wording that would, and searches again.</td></tr>
-    <tr><td><b>A whole-archive count</b></td><td>Only for questions asking <i>which</i> companies or <i>how many</i>. Counted across every indexed page rather than the handful read, so the answer is complete.</td></tr>
-  </table>
-  <div class="note">
-    <b>Why the count matters.</b> The model reads six passages. Ask "which of my companies mentioned China?" when twenty-three of them did, and six passages can only ever produce a confident, wrong "six". The count comes straight from the database, so it is right regardless of what the model reads.
-  </div>
-  <p>Name no company and ask a follow-up like "and its margins?" and it keeps the companies already under discussion, rather than starting again.</p>
-  <figure><img src="images/ask-ai.jpg" alt="An Ask AI answer with sources"><figcaption>An Ask AI answer: a table built from your saved analyses, numbered source chips underneath, the model that answered and how long it took, and three follow-up questions.</figcaption></figure>
-
-  <h3>Asking</h3>
-  <p>Type a question, or start from one of the suggestions on the empty screen — they are built around stocks you actually hold. The answer streams as it is written. Underneath it you get:</p>
-  <ul>
-    <li><b>Numbered source chips.</b> Click any one to see exactly what it was: a portfolio row, an analysis and its date, or a filing with the file on disk and the page number. Every company-specific claim in the answer carries a <code>[2]</code> pointing at one of them.</li>
-    <li><b>Three follow-up questions</b>, which come back in the same model call as the answer — so a turn costs one request, not two.</li>
-    <li><b>A line naming the model</b>, how long it took and how many sources it used. If another model had to stand in, it says so there — for example <i>"gemma4:e2b · stood in for gemma-4-31b-it, which was busy or too slow to start"</i>.</li>
-  </ul>
-
-  <div class="note">
-    <b>The model you chose is never hurried.</b> Some large models take 20 seconds or more just to start writing. The model picked in Settings always gets its full request timeout (<b>Settings → Models &amp; keys</b>) and is never set aside for being slow; only the stand-ins are held to a quick start. If answers keep coming from a stand-in, your chosen model is erroring or running past that timeout — use <b>Test connection</b>.
-  </div>
-
-  <h3>Keeping it honest</h3>
-  <p>The assistant is told to answer from the sources, cite each company fact, copy figures exactly with their units, and say plainly when the sources do not cover something. It may add general market or accounting knowledge — how a ratio is defined, what a term means — but it has to label that as general knowledge, and it must never invent a company figure.</p>
-  <div class="note warn">
-    <b>Check the citation when a number matters.</b> The chips are there to be clicked. An answer with no citation on a company-specific claim is one to be suspicious of, and a smaller local model is more likely to produce one. Chapter 4 has the guidance on model sizes.
-  </div>
-
-  <h3>Scope and saved chats</h3>
-  <p>The <b>Scope</b> button narrows a conversation to chosen companies, and can turn off filing search altogether — useful when you want an answer from the numbers alone, and faster, since no passages are retrieved.</p>
-  <p>Every conversation is saved and listed in the sidebar under its opening question. Pick one to carry on where you left off, <b>New chat</b> to start clean, or delete one you are finished with. Like everything else, they are stored on your own machine.</p>
-  <div class="note">
-    <b>This page needs a model.</b> With AI switched off, or none set up, it says so and does nothing. A local Ollama model is free and keeps every question on your computer; chapter 4 covers the options.
-  </div>
-</section>
-
-<!-- ============================ 7 ============================ -->
-<section class="chapter">
-  <div class="kicker">Chapter 16</div>
-  <h2>Excel and Word reports</h2>
-  <p class="intro">The <strong>Excel workbook</strong> and <strong>Word report</strong> buttons appear above the tabs after a run. Both contain everything from that run.</p>
-  <div class="grid2">
-    <div class="card">
-      <h3>Excel workbook</h3>
-      <ul>
-        <li><strong>Overview sheet:</strong> summary tiles and one row per company, with verdicts, ratios and quarter-on-quarter changes. Click a ticker to jump to its sheet.</li>
-        <li><strong>One sheet per company:</strong> AI analysis, key ratios, strengths and risks, news with links, all quarterly results with a chart, and the filings.</li>
-        <li><strong>Figures sheet:</strong> every number extracted from every PDF in one filterable table. Use the arrows in the header row to filter by ticker, category or label.</li>
-      </ul>
-      <p class="muted">Totals and changes are live formulas, so they update if you edit the numbers. Sheets print landscape, one page wide.</p>
-    </div>
-    <div class="card">
-      <h3>Word report</h3>
-      <ul>
-        <li><strong>Cover page</strong> with an "At a glance" table of all companies.</li>
-        <li><strong>One page per company:</strong> verdict, AI analysis, ratios, strengths and risks, the last 5 quarters, news with clickable links, and the filings.</li>
-        <li>A4 layout with page numbers, ready to print or share as PDF (<em>File → Save As → PDF</em> in Word).</li>
-      </ul>
-      <p class="muted">The Word report shows 5 quarters so the table fits the page. The Excel workbook has all of them.</p>
-    </div>
-  </div>
-</section>
-
-<!-- ============================ 8 ============================ -->
-<section class="chapter">
-  <div class="kicker">Chapter 17</div>
-  <h2>Finding ticker symbols</h2>
-  <p class="intro">The app uses the symbol from the company's page address on screener.in, which is usually its NSE symbol.</p>
+  <h2>Portfolio</h2>
+  <p class="intro">The stocks you own or want to follow.</p>
   <ol>
-    <li>Go to <a href="https://www.screener.in">screener.in</a> and search for the company.</li>
-    <li>Open its page and look at the address bar. The part after <code>/company/</code> is the symbol. For <code>screener.in/company/HDFCBANK/</code> it's <strong>HDFCBANK</strong>.</li>
-    <li>Type that into the <strong>Tickers</strong> box. Upper or lower case both work.</li>
+    <li>Press <b>New account</b> and give it any name, like <i>My stocks</i>. (Use more than one account to keep, say,
+      each broker separate.)</li>
+    <li>Press <b>Add a stock</b>, type its name, and optionally how many shares you own and what you paid.
+      Have a list already? Use <b>Add many at once from a spreadsheet</b>.</li>
+    <li>That's it. The app looks into each stock in the background and checks them again every few hours.</li>
   </ol>
   <table>
-    <tr><th>Company</th><th>Symbol</th><th>Company</th><th>Symbol</th></tr>
-    <tr><td>Reliance Industries</td><td><code>RELIANCE</code></td><td>HDFC Bank</td><td><code>HDFCBANK</code></td></tr>
-    <tr><td>Tata Consultancy Services</td><td><code>TCS</code></td><td>ICICI Bank</td><td><code>ICICIBANK</code></td></tr>
-    <tr><td>Infosys</td><td><code>INFY</code></td><td>State Bank of India</td><td><code>SBIN</code></td></tr>
+    <tr><th>Section</th><th>What it shows</th></tr>
+    <tr><td>My stocks</td><td>A card for each stock: price, trend, the AI's view, and your gain or loss.</td></tr>
+    <tr><td>How it's doing</td><td>How your stocks did over the past year, compared with the whole market.</td></tr>
+    <tr><td>Buys &amp; sells</td><td>Write down each buy and sell; the app works out your profit and yearly return.</td></tr>
+    <tr><td>Spread</td><td>How your money is split across companies and industries, and a warning if too much sits in one.</td></tr>
+    <tr><td>Alerts</td><td>Every message the app has sent you.</td></tr>
+    <tr><td>Weekly summary</td><td>A one-page round-up of your week.</td></tr>
   </table>
-  <div class="note">Some companies listed only on the BSE use a number instead of letters. Whatever appears after <code>/company/</code> on screener.in is what the app needs.</div>
+  <figure><img src="images/portfolio.jpg" alt="Portfolio, with a made-up demo portfolio"><figcaption>Portfolio, with a made-up demo portfolio</figcaption></figure>
+
 </section>
 
-<!-- ============================ 9 ============================ -->
+<!-- 6 -->
 <section class="chapter">
-  <div class="kicker">Chapter 18</div>
-  <h2>Privacy and how the AI is used</h2>
-  <p class="intro">The AI runs on your computer through Ollama. None of your data is sent to an AI company.</p>
-  <h3>What leaves your computer</h3>
-  <p>Only ordinary web requests for public pages: company data from screener.in, filing PDFs from the stock exchanges and company websites, and headlines from Google News, Bing News, Economic Times, Livemint, Business Standard and Hindu BusinessLine. The app has no accounts, no tracking and no analytics.</p>
-  <h3>What the AI sees</h3>
-  <table>
-    <tr><th style="width:22%">AI task</th><th>Input</th><th style="width:15%">Typical tokens</th></tr>
-    <tr><td>Verdict and analysis</td><td>Key ratios, the last two quarters' results, and up to 4 strengths and 4 risks</td><td>≈ 400</td></tr>
-    <tr><td>News digest and sentiment</td><td>Up to 8 headlines (not the full articles)</td><td>≈ 300</td></tr>
-    <tr><td>Error explanation</td><td>The error message, only when a company fails</td><td>≈ 100</td></tr>
-  </table>
-  <p>A <em>token</em> is roughly ¾ of a word. The app keeps usage low: it sends only clean, structured data (the thousands of PDF numbers are too noisy); caps every reply's length; switches off hidden "thinking"; and reuses answers for an hour (30 minutes for news), so re-running never pays twice for the same data. The Overview tab shows exactly how many tokens each run used.</p>
-  <div class="note warn"><strong>Not investment advice.</strong> Verdicts come from a small language model reading scraped data. It can misread numbers or miss context. Always check the underlying figures and filings before making decisions.</div>
-  <h3>Using data sources responsibly</h3>
-  <p>The app fetches public pages the way a browser does, pauses between companies, and keeps downloaded PDFs so they're never fetched twice. Please keep it that way: analyse a handful of companies at a time, and respect each website's terms of use.</p>
+  <div class="kicker">Chapter 6</div>
+  <h2>Alerts</h2>
+  <p class="intro">The app keeps watch so you don't have to.</p>
+  <p>In <b>Settings → Alerts</b>, choose how you'd like to hear (a pop-up on your Mac, email, or both) and what about:</p>
+  <ul>
+    <li>The AI's view of a stock changes</li>
+    <li>A company publishes something important, or its new annual report has a warning sign</li>
+    <li>A promise wasn't kept</li>
+    <li>A price you're watching is reached</li>
+  </ul>
+  <p>Press <b>Send me a test</b> to check it works. The app only sends alerts while it's running — to keep it running
+    in the background, see <b>Start automatically</b> in chapter 8.</p>
+
+  <h3>Setting up email (optional, 5 minutes)</h3>
+  <p>Emails are sent from your own Google account, only ever to you.</p>
+  <ol>
+    <li>Go to <a href="https://script.google.com">script.google.com</a> and press <b>New project</b>.</li>
+    <li>Delete what's there and paste this, changing <code>pick-a-password</code> to any password you like:
+<pre><code>const PASSWORD = 'pick-a-password';
+function doPost(e) {
+  const d = JSON.parse(e.postData.contents);
+  if (d.token !== PASSWORD) return ContentService.createTextOutput('wrong password');
+  MailApp.sendEmail({to: Session.getEffectiveUser().getEmail(),
+                     subject: d.subject, body: d.text, htmlBody: d.html});
+  return ContentService.createTextOutput('ok');
+}</code></pre></li>
+    <li>Press <b>Deploy → New deployment</b>, choose <b>Web app</b>, set <i>Execute as</i> to <b>Me</b> and
+      <i>Who has access</i> to <b>Anyone</b>, and press <b>Deploy</b>. Allow access when Google asks.</li>
+    <li>Copy the <b>Web app URL</b>. In the app, open <b>Settings → Alerts</b>, tick <b>Email</b>, and paste the address
+      and your password. Press <b>Save alert settings</b>, then <b>Send me a test</b>.</li>
+  </ol>
 </section>
 
-<!-- ============================ 10 ============================ -->
+<!-- 7 -->
 <section class="chapter">
-  <div class="kicker">Chapter 19</div>
-  <h2>The Settings page</h2>
-  <p class="intro">Almost everything about the app can be changed from inside it. Your choices are stored in <code>settings.json</code> next to the app, and nothing here can break it permanently — there is a Reset button at the bottom of the last tab.</p>
-
-  <h3>Models &amp; keys</h3>
-  <p>Choose your provider, give it an address and a key if it needs one, and pick a model. <strong>Test connection</strong> tells you immediately whether it works and how many models it can see. Under <strong>Generation limits</strong> you can set how long each kind of reply may be, in tokens; these are deliberately tight, and they are the difference between a tidy three-sentence answer and a surprising bill.</p>
-
-  <h3>Spending</h3>
-  <p>Only relevant if you use a paid provider; a local model is free and is never counted. Here you set a limit per run, a monthly limit in your currency and a monthly token limit, and see exactly what has been spent this month — by provider, by model and by what it was spent on, with a daily chart. A call that would cross a limit is refused before it is sent. Chapter 4 explains the three limits and which one matters most.</p>
-
-  <h3>Data &amp; scraping</h3>
-  <p>The tickers, filing types and timeframe a new run starts with, plus the limits it works under: the largest filing to download, how many pages to scan, how many filings to fetch at once, how long to pause between companies, and how recent news must be. The same tab has switches to turn whole features off — if you never look at news, or never want anything saved, turn it off here and the tabs disappear.</p>
+  <div class="kicker">Chapter 7</div>
+  <h2>More tools</h2>
+  <p class="intro">Research and Ask AI are in the main menu; the rest are under <b>More</b>.</p>
   <table>
-    <tr><th style="width:38%">Setting</th><th>Default and meaning</th></tr>
-    <tr><td>Largest filing</td><td>25 MB. Anything bigger is skipped rather than downloaded.</td></tr>
-    <tr><td>Pages scanned per PDF</td><td>150. Most filings are well under this, and a document is only ever scanned once.</td></tr>
-    <tr><td>Parallel downloads</td><td>4. Filings fetch at the same time; higher mostly annoys the servers.</td></tr>
-    <tr><td>Pause between companies</td><td>1–2 seconds. Politeness towards free public sites.</td></tr>
-    <tr><td>Headline age / count</td><td>14 days / 8 headlines.</td></tr>
-    <tr><td>Result cache</td><td>60 minutes. Takes effect after a restart; <em>Clear cached results</em> works at once.</td></tr>
+    <tr><th>Tool</th><th>What it's for</th></tr>
+    <tr><td>Research</td><td>Look into several companies at once and download a spreadsheet or Word report.</td></tr>
+    <tr><td>Ask AI</td><td>Ask anything in your own words — "Which of my stocks look weakest?" The answer shows where
+      each fact came from.</td></tr>
+    <tr><td>Screener</td><td>Search <b>every company listed on the NSE</b> for ones that match what you want. Pick a
+      ready-made search, like <i>Cheap and profitable</i>, or write one such as <code>P/E &lt; 15 AND Market Cap &gt; 1000</code>.
+      Tick <b>Include SMEs</b> to add small and medium companies.</td></tr>
+    <tr><td>Compare</td><td>Two to four companies side by side; the best on each line is marked in green.</td></tr>
+    <tr><td>Archive</td><td>Search every report the app has downloaded, instantly and for free.</td></tr>
+    <tr><td>History</td><td>Every earlier check of every company, and how its numbers moved over time.</td></tr>
   </table>
-
-  <h3>Appearance</h3>
-  <p>Accent colour, text size, spacing, chart colours, table height, decimal places, whether metrics show sparklines, and which tabs appear on the research page and in what order. You can also rewrite the subtitle under the app's title. If anything ever looks wrong, switch off <strong>Apply my appearance settings</strong> and the app falls straight back to its built-in theme.</p>
-
-  <h3>Performance</h3>
-  <p>How much memory the app is using right now, and every switch that changes it: lean mode, background work, chart preloading, cache sizes and how often held stocks are re-analysed. It is also where you turn on starting the app when you log in. Chapter 20 covers all of it.</p>
-
-  <h3>Storage &amp; history</h3>
-  <p>This is where you decide how long the app remembers things. Each limit can be set to 0, which means keep forever.</p>
-  <table>
-    <tr><th style="width:38%">What</th><th>Default</th></tr>
-    <tr><td>Saved analyses</td><td>180 days, and at most 40 per company. This is what the History page shows.</td></tr>
-    <tr><td>Filing PDFs</td><td>90 days. Deleting these frees the most space; they are downloaded again when needed.</td></tr>
-    <tr><td>Searchable text</td><td>365 days. Keep this longer than the PDFs — it is small, and it is what the Archive page reads.</td></tr>
-  </table>
-  <p>With <strong>Apply these limits automatically</strong> switched on, the clear-out happens quietly when the app starts. You can also run it on demand, clear the caches, or — behind a confirmation — delete every saved analysis and everything indexed.</p>
-
-  <h3>Settings that live outside the app</h3>
-  <p>Two things are still set when you start the app rather than inside it. To run on a different port:</p>
-  <pre><code>python -m streamlit run app.py --server.port 8502</code></pre>
-  <p>And to reach Ollama on another machine you can either type the address into Settings or use the <code>OLLAMA_HOST</code> variable, which is the same one Ollama itself reads:</p>
-  <div class="os">
-    <div><h4>Windows (PowerShell)</h4><pre><code>$env:OLLAMA_HOST = "192.168.1.20:11434"
-python -m streamlit run app.py</code></pre></div>
-    <div><h4>macOS / Linux</h4><pre><code>OLLAMA_HOST=192.168.1.20:11434 \
-  python -m streamlit run app.py</code></pre></div>
-  </div>
+  <div class="note">In the Screener, price, company value, P/E, price-to-book, dividend yield, EPS and 1-year return
+    are known for every listed company. ROE, ROCE, growth, the AI's view and promises are known only for companies the
+    app has looked into — press <b>Look into this company</b> on a Stock page to add one. Compare works on companies
+    the app has looked into.</div>
+  <figure><img src="images/screener.jpg" alt="The Screener"><figcaption>The Screener, searching every NSE-listed company</figcaption></figure>
 </section>
 
-<!-- ============================ PERFORMANCE ============================ -->
+<!-- 8 -->
 <section class="chapter">
-  <div class="kicker">Chapter 20</div>
-  <h2>Keeping it light, and starting it automatically</h2>
-  <p class="intro">This app is meant to sit in the background — watching prices, re-analysing what you hold, building a digest once a week. So it is built to be something you can forget about: comfortably under 500 MB of memory, and entirely under your control.</p>
-
-  <h3>What it actually uses</h3>
-  <p><b>Settings → Performance</b> shows the memory in use right now — the app plus any filing it is parsing at that moment — and warns you if it goes past 500 MB. For reference, with every page opened it sits around 230 MB, and about 190 MB in lean mode. Most of that is Python itself plus the two libraries the app is built on; the app's own data is a small fraction.</p>
-
-  <h3>The switches</h3>
+  <div class="kicker">Chapter 8</div>
+  <h2>Make it yours</h2>
+  <p class="intro">Everything is in <b>Settings</b>. Press the <b>Save</b> button in a section to keep a change.</p>
   <table>
-    <tr><th>Setting</th><th>What it trades</th></tr>
-    <tr><td><b>Lean mode</b></td><td>One switch for a light footprint: no chart preloading, small caches. The first chart you open takes a few seconds longer.</td></tr>
-    <tr><td><b>Keep working in the background</b></td><td>Off, the app does nothing unless you open a page and ask. No re-analysis, no price alerts, no weekly digest.</td></tr>
-    <tr><td><b>Preload the charting library</b></td><td>About 30 MB to make the first chart instant instead of taking a few seconds.</td></tr>
-    <tr><td><b>Price histories</b></td><td>The largest thing the app holds in memory — years of daily bars per company. Lower means less memory and more re-fetching.</td></tr>
-    <tr><td><b>Latest quotes</b> / <b>Company searches</b></td><td>How many results are remembered before the app asks again.</td></tr>
-    <tr><td><b>Let Ask AI rank passages</b></td><td>The model picks which retrieved passages actually answer your question, instead of trusting the keyword order — "share capital" is not capital expenditure. One extra request per question: a few seconds locally, longer on a hosted provider.</td></tr>
-    <tr><td><b>Re-analyse each held stock every…</b></td><td>How often background analysis runs. 0 analyses a stock once, when you add it, and never again.</td></tr>
-    <tr><td><b>Filings downloaded at once</b></td><td>Faster, but heavier — and less polite to the site being read.</td></tr>
-    <tr><td><b>CPU the analysis may use</b></td><td>The share of your computer's processor that parsing filings may take (default 50%). Lower means a slower analysis and a cooler, quieter machine; clicks in the app are never slowed. It also caps how many threads a local Ollama model may use — at 100% Ollama decides for itself.</td></tr>
-    <tr><td><b>Memory limit (MB)</b></td><td>A ceiling for the app and its parse workers together (default 2,048 MB). Over it, the next filing waits for memory to free up before it is parsed. 0 means no limit.</td></tr>
+    <tr><th>Section</th><th>What you can change</th></tr>
+    <tr><td>Layout &amp; look</td><td>Menu across the top or down the side · which page the app opens on · hide pages you
+      don't use · which sections a company's page shows · simple or detailed price chart · colour, text size and
+      spacing · a detailed (candles) or simple price chart · whether to track shares and prices · how often your stocks are re-checked.</td></tr>
+    <tr><td>AI</td><td>Which AI to use, or turn it off.</td></tr>
+    <tr><td>Alerts</td><td>How and when the app tells you things (chapter 6).</td></tr>
+    <tr><td>Spending</td><td>Limits for paid AI services. Free AI is never counted.</td></tr>
+    <tr><td>Advanced</td><td>Downloading, storage and backups, speed and memory, and <b>Start automatically</b> when you
+      log in. The defaults work well.</td></tr>
   </table>
-  <figure><img src="images/performance.jpg" alt="Settings, Performance tab"><figcaption>Settings → Performance: the switches and caches, and the CPU and memory limits for analysis work.</figcaption></figure>
-  <div class="note good">
-    <b>Why pages stay quick during an analysis.</b> Reading a large annual report is heavy work. The app does it in separate, low-priority processes — one fresh process per filing, which hands its memory back the moment it finishes — so the page you are on keeps responding instead of freezing for several seconds. The CPU and memory limits apply from the next filing parsed.
-  </div>
-  <p>The cache sizes take effect when the app restarts. <b>Free memory now</b> drops everything held in memory immediately; nothing is lost, it is simply fetched or recomputed next time it is needed.</p>
-  <div class="note good">
-    <b>The app is already careful about the expensive things.</b> A filing is parsed once ever and the result cached by file hash. The PDF reader — about 22 MB — is only loaded when a PDF is actually opened, so a session that never runs an analysis never pays for it. Model answers are cached, so re-running a company costs nothing.
-  </div>
-
-  <h3>Starting when you log in</h3>
-  <p>At the bottom of the same tab, <b>Start when I log in</b> makes the app launch quietly in the background whenever you sign in to your computer, so alerts and the weekly digest keep arriving without you starting anything.</p>
-  <table>
-    <tr><th>Your system</th><th>What gets written</th></tr>
-    <tr><td>macOS</td><td>A LaunchAgent in <code>~/Library/LaunchAgents</code>, at background priority so it never steals focus, and restarted if it ever crashes.</td></tr>
-    <tr><td>Windows</td><td>A small script in your Startup folder that launches the app minimised.</td></tr>
-    <tr><td>Linux</td><td>A <code>.desktop</code> entry in <code>~/.config/autostart</code>.</td></tr>
-  </table>
-  <p>It is exactly one file, in the place your operating system documents for it, and switching the toggle off deletes it again. There is no installer and no background service left behind. Once it is running, open <a href="http://localhost:8501">http://localhost:8501</a> in a browser whenever you want to look at it.</p>
-  <div class="note">
-    <b>It uses the same Python you installed the app with</b>, so a virtual environment keeps working after a reboot. If you move the app folder, switch the toggle off and on again so it points at the new location.
-  </div>
+  <figure><img src="images/settings.jpg" alt="Settings → Layout &amp; look"><figcaption>Settings → Layout &amp; look</figcaption></figure>
+  <p><b>Want more detail?</b> Turn on <b>Show more details</b> in Layout &amp; look. It adds extra counts and figures,
+    the original financial terms (like ROCE), AI costs and model names, file locations and full error messages.</p>
 </section>
 
-<!-- ============================ 11 ============================ -->
+<!-- 9 -->
 <section class="chapter">
-  <div class="kicker">Chapter 21</div>
-  <h2>Troubleshooting</h2>
-  <p class="intro">Find what you see in the left column.</p>
-  <h3>Installing and starting</h3>
+  <div class="kicker">Chapter 9</div>
+  <h2>If something goes wrong</h2>
   <table>
-    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td><code>python</code> or <code>python3</code> "not found"</td><td>Install Python from python.org (chapter 3, step 1). On Windows, re-run the installer and tick <em>Add python.exe to PATH</em>, then open a new PowerShell window.</td></tr>
-    <tr><td>"running scripts is disabled on this system" (Windows)</td><td>Don't activate the environment; prefix commands with <code>.venv\Scripts\</code> instead, e.g. <code>.venv\Scripts\python -m streamlit run app.py</code>.</td></tr>
-    <tr><td>Errors during <code>pip install</code></td><td>Check <code>python --version</code> is 3.10 or newer, then upgrade pip and retry: <code>python -m pip install --upgrade pip</code>.</td></tr>
-    <tr><td>"No module named streamlit"</td><td>The environment isn't active. Run the activate command from chapter 3, step 3, then try again.</td></tr>
-    <tr><td>"Port 8501 is already in use"</td><td>The app is already running in another window, so use that one. Or start it on another port: <code>--server.port 8502</code>.</td></tr>
-  </table>
-  <h3>Running an analysis</h3>
-  <table>
-    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td>A company shows <strong>Failed</strong></td><td>Usually a wrong symbol: check it on screener.in (chapter 17). It can also be a network problem or the site temporarily limiting requests; wait a few minutes and try again. With AI on, the card explains the problem in plain English.</td></tr>
-    <tr><td>A filing says <em>Skipped</em></td><td>It was over 25 MB, or the link led to a web page rather than a PDF. The rest of the analysis is unaffected.</td></tr>
-    <tr><td>"No news in the last 14 days"</td><td>Normal for smaller companies. The news sources simply had nothing that named the company.</td></tr>
-    <tr><td>An analysis is slower than it used to be</td><td>Check <b>Settings → Performance → CPU the analysis may use</b> and the memory limit. A low CPU share, or a memory limit the app is already near, makes filings wait. Raise either; the app's own pages are unaffected either way.</td></tr>
-    <tr><td>Numbers look out of date</td><td>Results are reused for an hour. Use <strong>⋮ → Clear cache</strong>, then run again.</td></tr>
-  </table>
-  <h3>Local AI</h3>
-  <table>
-    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td>Sidebar says <strong>Ollama not detected</strong></td><td>Start Ollama (open the app, or run <code>ollama serve</code>), then refresh the page. Check <a href="http://localhost:11434">localhost:11434</a> says <em>Ollama is running</em>.</td></tr>
-    <tr><td>Connected, but the model list is empty</td><td>No model has been downloaded yet. Run <code>ollama pull &lt;name&gt;</code> with a model from ollama.com/library that fits your RAM (chapter 4, route A), then press <strong>Test connection</strong> again.</td></tr>
-    <tr><td>"… returned no summary for this ticker"</td><td>Update Ollama to the latest version (0.9 or newer is required), or pick another model from the list.</td></tr>
-    <tr><td>Ask AI answers from a different model than the one you chose</td><td>The line under the answer names the stand-in. Your chosen model was unreachable, returned an error, or ran past the request timeout. Press <b>Test connection</b> in <b>Settings → Models &amp; keys</b>, and raise the timeout there if it is a large, slow model.</td></tr>
-    <tr><td>The first AI answer is slow</td><td>The model is loading into memory, which can take 10 to 30 seconds. Later answers take a second or two.</td></tr>
-    <tr><td>Computer slows down</td><td>The model is too large for your RAM. Choose a smaller one. <code>ollama list</code> shows installed models; <code>ollama rm &lt;name&gt;</code> removes one.</td></tr>
-  </table>
-  <h3>Reports</h3>
-  <table>
-    <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-    <tr><td>Excel or Word warns about the file</td><td>Please report it (see the project's GitHub <em>Issues</em> page) with the tickers you used. Both files are checked automatically before download, so this shouldn't happen.</td></tr>
-    <tr><td>Totals show 0 in a file previewer</td><td>Some previewers (e.g. macOS Quick Look) don't calculate formulas. Open the file in Excel, Numbers, LibreOffice or Google Sheets.</td></tr>
+    <tr><th>What you see</th><th>What to do</th></tr>
+    <tr><td>The app won't open</td><td>Check the Terminal window is still open. If you closed it, start the app again (chapter 2, step 4).</td></tr>
+    <tr><td>"Couldn't connect" in Settings → AI</td><td>Open the Ollama app, then press <b>Check it works</b> again.</td></tr>
+    <tr><td>No AI summary</td><td>Turn AI on in Settings → AI. If it's on, try again later or pick a different model.</td></tr>
+    <tr><td>"The search service is busy"</td><td>Wait a few seconds and type again.</td></tr>
+    <tr><td>A company "couldn't load"</td><td>Check the name, then try again in a minute.</td></tr>
+    <tr><td>The computer feels slow</td><td>In Settings → Advanced → Speed &amp; memory, lower the limits. A smaller AI model also helps.</td></tr>
+    <tr><td>Anything else</td><td>Paste what you see into any AI assistant along with "I'm using the Indian Stock Data Hub app" — it can usually tell you what to do.</td></tr>
   </table>
 </section>
 
-<!-- ============================ 12 ============================ -->
+<!-- 10 -->
 <section class="chapter">
-  <div class="kicker">Chapter 22</div>
-  <h2>Glossary</h2>
-  <p class="intro">The terms you'll meet in the app, in plain language.</p>
+  <div class="kicker">Chapter 10</div>
+  <h2>Words you might see</h2>
   <dl>
-    <div><dt>Ticker / symbol</dt><dd>A company's short code on the stock exchange, e.g. INFY for Infosys.</dd></div>
-    <div><dt>Crore (Cr)</dt><dd>10 million (1,00,00,000). Indian financial figures are usually in ₹ crore.</dd></div>
-    <div><dt>Market cap</dt><dd>Share price × number of shares: what the whole company is worth on the market.</dd></div>
-    <div><dt>P/E (price-to-earnings)</dt><dd>Share price ÷ earnings per share. Higher means investors pay more for each rupee of profit.</dd></div>
-    <div><dt>Book value</dt><dd>The company's net assets per share, from its accounts.</dd></div>
-    <div><dt>ROE (return on equity)</dt><dd>Profit as a percentage of shareholders' money. Shows how efficiently that money is used.</dd></div>
-    <div><dt>ROCE (return on capital employed)</dt><dd>Operating profit as a percentage of all capital used, including debt.</dd></div>
-    <div><dt>Dividend yield</dt><dd>Yearly dividend as a percentage of the share price.</dd></div>
-    <div><dt>Face value</dt><dd>The nominal value printed on a share. Rarely matters for analysis.</dd></div>
-    <div><dt>Sales / revenue</dt><dd>Money earned from the company's business in the period.</dd></div>
-    <div><dt>Operating profit</dt><dd>Sales minus operating expenses, before interest, depreciation and tax.</dd></div>
-    <div><dt>OPM (operating profit margin)</dt><dd>Operating profit as a percentage of sales.</dd></div>
-    <div><dt>Net profit</dt><dd>What's left after all expenses, interest and tax.</dd></div>
-    <div><dt>EPS (earnings per share)</dt><dd>Net profit ÷ number of shares, in rupees.</dd></div>
-    <div><dt>QoQ (quarter on quarter)</dt><dd>Change from the previous quarter. Rising sales or profit is shown in green; rising costs are shown in red.</dd></div>
-    <div><dt>pp (percentage points)</dt><dd>The change between two percentages: a margin going from 20% to 23% is +3 pp.</dd></div>
-    <div><dt>Concall transcript</dt><dd>The written record of management's earnings call with analysts.</dd></div>
-    <div><dt>Investor presentation</dt><dd>The slide deck a company publishes alongside its results.</dd></div>
-    <div><dt>Ollama</dt><dd>Free software that runs AI language models on your own computer.</dd></div>
-    <div><dt>Model</dt><dd>The AI "brain" Ollama runs. Bigger models are usually more accurate but need more memory.</dd></div>
-    <div><dt>Token</dt><dd>A chunk of text, roughly ¾ of a word, that AI models read and write.</dd></div>
-    <div><dt>Verdict</dt><dd>The AI's one-word take (Positive, Neutral or Cautious), based only on the scraped data.</dd></div>
+    <div><dt>Symbol</dt><dd>A company's short name on the stock exchange, like TCS or INFY.</dd></div>
+    <div><dt>Price / earnings (P/E)</dt><dd>How many years of today's profit the share price equals. Lower is cheaper.</dd></div>
+    <div><dt>Return on equity (ROE)</dt><dd>Profit made for every ₹100 the owners have put in. Higher is better.</dd></div>
+    <div><dt>Return on capital (ROCE)</dt><dd>Profit made for every ₹100 the business uses, including borrowed money.</dd></div>
+    <div><dt>Dividend</dt><dd>Cash the company pays its shareholders.</dd></div>
+    <div><dt>Company value (market cap)</dt><dd>The price of all its shares added together.</dd></div>
+    <div><dt>Annual report</dt><dd>The company's yearly report, including its audited accounts.</dd></div>
+    <div><dt>Investor call</dt><dd>Where the bosses talk to investors after results. The app reads the written record.</dd></div>
+    <div><dt>Announcement</dt><dd>A notice every listed company must send the stock exchange when something happens.</dd></div>
+    <div><dt>Auditor</dt><dd>An outside firm that checks the company's accounts each year.</dd></div>
+    <div><dt>Nifty 50</dt><dd>The 50 biggest companies in India — a way to see how "the market" did.</dd></div>
+    <div><dt>Tokens</dt><dd>How AI services measure text, roughly one word each. Only matters for paid AI.</dd></div>
   </dl>
 </section>
 

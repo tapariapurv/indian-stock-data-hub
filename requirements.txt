@@ -1,5 +1,5 @@
 # Python 3.10 or newer.  Install with:  pip install -r requirements.txt
-streamlit>=1.60          # UI (uses recent layout/metric features)
+streamlit>=1.64          # UI (live search, top navigation, light + dark themes)
 pandas>=2.2
 requests>=2.31
 beautifulsoup4>=4.12

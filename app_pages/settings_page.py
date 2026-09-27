@@ -13,106 +13,107 @@ import llm
 import alerts
 import portfolio
 import settings as cfg
+import ui
 
 s = st.session_state.settings
 
-st.caption(":material/settings: CONFIGURATION")
 st.title("Settings")
-st.markdown(":gray[Everything here is stored in `settings.json` next to the app. API keys are saved with "
-            "owner-only permissions, and an environment variable always wins over a saved key — so on a "
-            "shared machine you need never write one down.]")
+with st.container(horizontal=True, vertical_alignment="center"):
+    st.caption("Everything is saved on this computer. Press the **Save** button in each section to keep a change.")
+    st.link_button("User guide", core.GUIDE_URL, icon=":material/menu_book:", type="tertiary")
 
-tab_ai, tab_spend, tab_note, tab_data, tab_look, tab_store, tab_perf = st.tabs(
-    [":material/memory: Models & keys", ":material/payments: Spending", ":material/notifications: Notifications",
-     ":material/travel_explore: Data & scraping", ":material/palette: Appearance",
-     ":material/database: Storage & history", ":material/speed: Performance"])
+tab_look, tab_ai, tab_note, tab_spend, tab_adv = st.tabs(
+    [":material/palette: Layout & look", ":material/auto_awesome: AI", ":material/notifications: Alerts",
+     ":material/payments: Spending", ":material/tune: Advanced"])
+with tab_adv:
+    st.caption("You shouldn't need to change anything here — the defaults work well.")
+    tab_data, tab_store, tab_perf = st.tabs(
+        [":material/travel_explore: Downloading", ":material/database: Storage & backups",
+         ":material/speed: Speed & memory"])
 
 # --------------------------------------------------------------------------
 # Models and providers
 # --------------------------------------------------------------------------
 with tab_ai:
     ai = s["ai"]
-    st.markdown("**Use AI**")
+    st.info("**The easiest choice is free:** install *Ollama* (a free app) and pick it below — the AI then runs "
+            "on this computer and nothing is sent anywhere. The user guide walks you through it, or paste "
+            "the setup prompt from the guide into any AI assistant and it will do it for you.",
+            icon=":material/lightbulb:")
+    st.link_button("Open the user guide", core.GUIDE_URL, icon=":material/menu_book:")
     enabled = st.toggle(
-        "Use a model for verdicts, analyses, news digests, transcripts and archive answers",
-        value=ai["enabled"],
-        help="Everything else — scraping, extraction, exports, keyword search — works without one.")
+        "Use AI for summaries, explanations and answers", value=ai["enabled"],
+        help="Everything else — prices, numbers, warning signs, search — works without it.")
     if not enabled:
-        st.caption(":material/info: With this off, every AI feature in the app is disabled, "
-                   "including the answers on the Archive page.")
+        st.caption(":material/info: With this off, summaries, *Explain* and *Ask AI* are switched off.")
 
     provider_ids = list(cfg.PROVIDERS)
     provider = st.selectbox(
-        "Provider", provider_ids, index=provider_ids.index(ai["provider"]),
-        format_func=lambda p: cfg.PROVIDERS[p][0],
-        help="Ollama runs on your own machine and costs nothing. The rest are paid APIs and send "
-             "your scraped data to that company.")
+        "Which AI service", provider_ids, index=provider_ids.index(ai["provider"]),
+        format_func=lambda p: cfg.PROVIDERS[p][0] + (" — free, runs on this computer" if p == "ollama" else ""),
+        help="Ollama is free and private. The others are paid services run by AI companies.")
     label, env_var, default_base, needs_key = cfg.PROVIDERS[provider]
 
     with st.container(border=True):
         st.markdown(f"**{label}**")
         base = st.text_input(
-            "Server address", value=s["providers"][provider]["base_url"] or default_base,
+            "Address (leave as it is)", value=s["providers"][provider]["base_url"] or default_base,
             placeholder=default_base or "https://my-model-server.local/v1",
             help="Point this anywhere that speaks the OpenAI API — LM Studio, vLLM, llama.cpp, "
                  "a colleague's server, or a provider not listed here.")
         env_set = bool(os.environ.get(env_var, "").strip())
         if env_set:
-            st.success(f"Using the `{env_var}` environment variable. Nothing is stored on disk.",
+            st.success("Your key is already set up on this computer.",
                        icon=":material/lock:")
             key_input = s["providers"][provider]["api_key"]
         else:
             stored = s["providers"][provider]["api_key"]
             key_input = st.text_input(
-                "API key", value=stored, type="password",
-                placeholder="paste your key" if needs_key else "not needed for a local server",
-                help=f"Or set the `{env_var}` environment variable instead and leave this empty.")
+                "Key", value=stored, type="password",
+                placeholder="paste the key from the AI company's website" if needs_key else "not needed",
+                help="A password-like code the AI company gives you when you sign up. It's kept on this computer.")
             if needs_key and not key_input:
-                st.warning("This provider needs a key before it can list models.",
+                st.warning("This service needs a key. Get one from its website and paste it above.",
                            icon=":material/key_off:")
 
         if needs_key or any(cfg.prices(s, provider)):
-            st.markdown(":gray[What this provider charges, per million tokens. Copy the numbers from "
-                        "its pricing page — the app will not guess, and leaving them at 0 simply "
-                        "means spending is tracked in tokens rather than money.]")
+            st.markdown(":gray[Optional: what this service charges, copied from its pricing page (price per "
+                        "million 'tokens' — roughly words). Fill these in to see your spending in money.]")
             p1, p2 = st.columns(2)
-            price_in = p1.number_input("Input price / 1M tokens", 0.0, 10000.0,
+            price_in = p1.number_input("Price for what you send", 0.0, 10000.0,
                                        float(s["providers"][provider].get("price_in") or 0.0), 0.10,
                                        format="%.2f")
-            price_out = p2.number_input("Output price / 1M tokens", 0.0, 10000.0,
+            price_out = p2.number_input("Price for what it writes", 0.0, 10000.0,
                                         float(s["providers"][provider].get("price_out") or 0.0), 0.10,
                                         format="%.2f")
         else:
             price_in = price_out = 0.0
-            st.caption(":material/check_circle: This provider runs on your own hardware, so it is "
-                       "free and never counted against a budget.")
+            st.caption(":material/check_circle: This runs on your own computer, so it's free.")
 
-        if st.button("Test connection", icon=":material/link:"):
+        if st.button("Check it works", icon=":material/link:"):
             llm.list_models.clear()
         found = llm.list_models(provider, cfg.base_url({**s, "providers": {**s["providers"],
                                 provider: {"base_url": base, "api_key": key_input}}}, provider),
                                 os.environ.get(env_var, "").strip() or key_input)
         if found:
-            st.success(f"Connected · {len(found)} model(s) available", icon=":material/check_circle:")
+            st.success(f"Working — {len(found)} AI model(s) ready.", icon=":material/check_circle:")
         else:
-            st.error("Could not reach that provider, or it returned no models.",
-                     icon=":material/error:")
+            st.error("Couldn't connect.", icon=":material/error:")
             if provider == "ollama":
-                st.caption("Start Ollama and check http://localhost:11434 says \"Ollama is running\". "
-                           "Chapter 4 of the user guide has the full walkthrough.")
+                st.caption("Make sure the Ollama app is open, then press **Check it works** again. "
+                           "The user guide shows each step.")
 
     model_options = list(found) or ([ai["model"]] if ai["model"] else [])
     model = st.selectbox(
-        "Model", model_options, format_func=lambda m: found.get(m, m),
+        "Which AI model", model_options, format_func=lambda m: found.get(m, m),
         index=model_options.index(ai["model"]) if ai["model"] in model_options
         else (0 if model_options else None),
-        disabled=not model_options, placeholder="No models available",
-        help="Bigger models write better analysis; smaller ones are faster and cheaper. "
-             "Local models also need the RAM.")
+        disabled=not model_options, placeholder="None found yet — check it works above",
+        help="Bigger models write better but are slower (and cost more on paid services).")
 
-    with st.expander("Generation limits", icon=":material/tune:"):
-        st.caption("Reply lengths, in tokens. These are the only thing standing between a tidy "
-                   "three-sentence answer and a provider bill, so they are deliberately tight.")
+    with st.expander("Advanced: answer lengths", icon=":material/tune:"):
+        st.caption("How long each kind of AI answer may be (in tokens — roughly words). Short limits keep "
+                   "answers tidy and costs low.")
         g1, g2, g3 = st.columns(3)
         tokens_analysis = g1.number_input("Company analysis", 60, 1000, int(ai["tokens_analysis"]), 10)
         tokens_news = g2.number_input("News digest", 40, 600, int(ai["tokens_news"]), 10)
@@ -130,7 +131,7 @@ with tab_ai:
                                        "costs RAM and load time.")
         timeout = g8.number_input("Request timeout (seconds)", 10, 600, int(ai["timeout"]), 5)
 
-    if st.button("Save model settings", type="primary", icon=":material/save:"):
+    if st.button("Save AI settings", type="primary", icon=":material/save:"):
         s["ai"].update(enabled=enabled, provider=provider, model=model or "",
                        temperature=float(temperature), num_ctx=int(num_ctx), timeout=int(timeout),
                        tokens_analysis=int(tokens_analysis), tokens_news=int(tokens_news),
@@ -140,7 +141,7 @@ with tab_ai:
                                     "api_key": "" if env_set else key_input.strip(),
                                     "price_in": float(price_in), "price_out": float(price_out)}
         cfg.save(s)
-        st.toast("Model settings saved.", icon=":material/check_circle:")
+        st.toast("AI settings saved.", icon=":material/check_circle:")
 
 # --------------------------------------------------------------------------
 # Spending
@@ -151,15 +152,14 @@ with tab_spend:
     provider_label = cfg.PROVIDERS[s["ai"]["provider"]][0]
 
     if not state["paid"]:
-        st.success(f"You are using **{provider_label}**, which runs on your own hardware. "
-                   "It costs nothing, and none of the limits below apply to it. They take effect "
-                   "the moment you switch to a paid provider.", icon=":material/savings:")
+        st.success(f"You're using **{provider_label}**, which is free. The limits below only matter "
+                   "if you switch to a paid AI service.", icon=":material/savings:")
     month = archive.usage_since(cfg.month_start())
     s1, s2, s3, s4 = st.columns(4)
     s1.metric("Spent this month", cfg.money(s, month["cost"]), border=True,
               help="Based on the prices you entered for each provider.")
-    s2.metric("Tokens this month", f"{month['tokens']:,}", border=True)
-    s3.metric("Model calls", f"{month['calls']:,}", border=True)
+    s2.metric("Words used (tokens)", f"{month['tokens']:,}", border=True)
+    s3.metric("AI requests", f"{month['calls']:,}", border=True)
     s4.metric("Remaining", cfg.money(s, max(0.0, state["cost_cap"] - month["cost"]))
               if state["cost_cap"] else "No cap", border=True)
 
@@ -173,9 +173,9 @@ with tab_spend:
                          f"({state['token_pct']:.0f}%)")
 
     st.markdown("**Limits**")
-    st.caption("A call that would cross a limit is refused before it is sent, so a limit can never "
-               "be exceeded by accident. Set any of these to 0 to remove it.")
-    enabled_budget = st.toggle("Enforce these limits", value=b["enabled"])
+    st.caption("The app stops before going over a limit, so you can never overspend by accident. "
+               "0 means no limit.")
+    enabled_budget = st.toggle("Use these limits", value=b["enabled"])
     c1, c2, c3 = st.columns(3)
     currency = c1.selectbox("Currency", list(cfg.CURRENCIES),
                             index=list(cfg.CURRENCIES).index(b.get("currency", "USD"))
@@ -183,12 +183,11 @@ with tab_spend:
                             help="Only a label — enter prices in the same currency.")
     monthly_cost = c2.number_input(f"Monthly limit ({cfg.CURRENCIES.get(currency, '')})",
                                    0.0, 100000.0, float(b["monthly_cost"]), 1.0, format="%.2f")
-    monthly_tokens = c3.number_input("Monthly token limit", 0, 100_000_000,
+    monthly_tokens = c3.number_input("Monthly limit (tokens)", 0, 100_000_000,
                                      int(b["monthly_tokens"]), 10_000)
     c4, c5 = st.columns(2)
-    per_run = c4.number_input("Tokens per run", 0, 10_000_000, int(b["max_tokens_per_run"]), 1_000,
-                              help="The one that saves you: a 200-company watchlist against a "
-                                   "frontier model can spend a monthly budget in a single run.")
+    per_run = c4.number_input("Limit per analysis (tokens)", 0, 10_000_000, int(b["max_tokens_per_run"]), 1_000,
+                              help="Stops one big job — like analysing 200 companies — using up a month's budget.")
     warn_at = c5.slider("Warn me at", 10, 100, int(b["warn_at"]), 5,
                         help="Percentage of a limit at which the app starts warning you.")
 
@@ -219,27 +218,27 @@ with tab_spend:
             archive.clear_usage()
             st.rerun()
     else:
-        st.caption("No model calls recorded this month.")
+        st.caption("No AI used this month.")
 
 # --------------------------------------------------------------------------
 # Data and scraping
 # --------------------------------------------------------------------------
 with tab_data:
     d = s["data"]
-    st.markdown("**Defaults for a new run**")
-    default_tickers = st.text_input("Tickers", value=d["default_tickers"])
-    categories = st.pills("Filings", core.WANTED_CATEGORIES, selection_mode="multi",
+    st.markdown("**What to read for each company**")
+    default_tickers = st.text_input("Companies filled in on *Research*", value=d["default_tickers"])
+    categories = st.pills("Reports to read", core.WANTED_CATEGORIES, selection_mode="multi",
                           default=d["categories"])
-    timeframe = st.selectbox("Timeframe", list(core.TIMEFRAME_OPTIONS),
+    timeframe = st.selectbox("How far back", list(core.TIMEFRAME_OPTIONS),
                              index=list(core.TIMEFRAME_OPTIONS).index(d["timeframe"])
                              if d["timeframe"] in core.TIMEFRAME_OPTIONS else 0)
 
     st.markdown("**Downloads**")
     c1, c2, c3 = st.columns(3)
-    max_file_mb = c1.number_input("Largest filing (MB)", 1, 200, int(d["max_file_mb"]))
-    max_pages = c2.number_input("Pages scanned per PDF", 10, 1000, int(d["max_pdf_pages"]),
-                                help="Most filings are well under this. Raising it costs about "
-                                     "2 seconds per 75 extra pages, once per document ever.")
+    max_file_mb = c1.number_input("Largest report to download (MB)", 1, 200, int(d["max_file_mb"]))
+    max_pages = c2.number_input("Pages to read per report", 10, 1000, int(d["max_pdf_pages"]),
+                                help="Raise this to catch warning signs deep in long annual reports. "
+                                     "Each extra 75 pages adds about 2 seconds, once per report.")
     workers = c3.number_input("Parallel downloads", 1, 12, int(d["doc_workers"]),
                               help="Filings download at the same time. 4 is plenty; higher mostly "
                                    "annoys the servers you are downloading from.")
@@ -262,15 +261,14 @@ with tab_data:
 
     st.markdown("**Features**")
     f = s["features"]
-    FEATURE_NAMES = [("News", "news"), ("All numbers", "detailed_numbers"),
-                     ("Archive search", "archive"), ("AI answers in Archive", "archive_ai"),
-                     ("Saved history", "history"), ("Guidance tracking", "guidance")]
+    FEATURE_NAMES = [("News", "news"), ("Every number", "detailed_numbers"),
+                     ("Document search", "archive"), ("AI help in document search", "archive_ai"),
+                     ("Keep past analyses", "history"), ("Promise tracking", "guidance")]
     picked = st.pills(
         "Turn parts of the app on or off", [name for name, _ in FEATURE_NAMES],
         selection_mode="multi",
         default=[name for name, key in FEATURE_NAMES if f.get(key, True)])
-    st.caption("**AI answers in Archive** lets the model expand your question, rank what it finds "
-               "and answer with citations. Off, the Archive page is plain keyword search.")
+    st.caption("**AI help in document search** lets the AI find better matches. Off, it's a plain word search.")
 
     if st.button("Save data settings", type="primary", icon=":material/save:"):
         d.update(default_tickers=default_tickers, categories=list(categories) or core.WANTED_CATEGORIES,
@@ -282,19 +280,36 @@ with tab_data:
         f.update(**{key: name in picked for name, key in FEATURE_NAMES})
         cfg.save(s)
         core.apply_settings(s)
-        st.toast("Data settings saved.", icon=":material/check_circle:")
+        st.toast("Saved.", icon=":material/check_circle:")
 
 # --------------------------------------------------------------------------
 # Appearance
 # --------------------------------------------------------------------------
 with tab_look:
     u = s["ui"]
-    custom_style = st.toggle(
-        "Apply my appearance settings", value=u["custom_style"],
-        help="Off means the app uses only the base theme in .streamlit/config.toml — the safe "
-             "fallback if anything here ever looks wrong.")
+    st.markdown("**Layout**")
+    l1, l2 = st.columns(2)
+    nav = l1.segmented_control("Menu", ["top", "sidebar"], default=u["nav"], required=True,
+                               format_func={"top": "Across the top", "sidebar": "Down the side"}.get)
+    titles = [title for _, title, _, _ in cfg.PAGES]
+    home = l2.selectbox("Open the app on", titles, index=titles.index(u["home"]) if u["home"] in titles else 0)
+    hidden = st.multiselect("Hide these pages from the menu", [t for t in titles if t not in cfg.ALWAYS_SHOWN],
+                            default=[t for t in u["hidden_pages"] if t in titles],
+                            placeholder="Show every page", help="Home and Settings are always shown.")
+    tabs_picked = st.pills("Sections shown on a company's page", cfg.ALL_TABS, selection_mode="multi",
+                           default=[t for t in u["tabs"] if t in cfg.ALL_TABS], format_func=ui.TAB_LABEL.get)
+    chart_style = st.segmented_control("Price chart", ["Detailed", "Simple"], default=u["chart_style"],
+                                       required=True, help="Detailed shows daily candles, trading volume and "
+                                                           "50- and 200-day averages. Simple shows one price line.")
+    tech_details = st.toggle("Show more details", value=u["tech_details"],
+                             help="Everything the app knows: extra counts and figures, the original financial terms, "
+                                  "AI costs and model names, file locations and full error messages.")
+
+    st.markdown("**Look**")
+    custom_style = st.toggle("Use my colour and text size below", value=u["custom_style"],
+                             help="Turn off to go back to the standard look.")
     a1, a2 = st.columns(2)
-    accent_name = a1.selectbox("Accent colour", list(cfg.ACCENTS),
+    accent_name = a1.selectbox("Colour", list(cfg.ACCENTS),
                                index=list(cfg.ACCENTS.values()).index(u["accent"])
                                if u["accent"] in cfg.ACCENTS.values() else 0)
     accent = a2.color_picker("or pick your own", value=cfg.ACCENTS.get(accent_name, u["accent"]))
@@ -302,36 +317,23 @@ with tab_look:
     font_scale = b1.slider("Text size", 0.8, 1.4, float(u["font_scale"]), 0.05)
     density = b2.select_slider("Spacing", list(cfg.DENSITIES), value=u["density"])
 
-    st.markdown("**Tables and charts**")
-    c1, c2, c3 = st.columns(3)
-    table_height = c1.number_input("Table height (px)", 200, 1200, int(u["table_height"]), 20)
-    decimals = c2.number_input("Decimal places", 0, 6, int(u["decimals"]))
-    sparklines = c3.toggle("Sparklines on metrics", value=u["sparklines"])
-    d1, d2 = st.columns(2)
-    chart_one = d1.color_picker("Chart colour 1", value=u["chart_colors"][0])
-    chart_two = d2.color_picker("Chart colour 2", value=u["chart_colors"][1])
-    show_context = st.toggle("Show the source sentence next to each extracted figure",
-                             value=u["show_context_column"],
-                             help="The sentence a number came from. Worth keeping: it is how you "
-                                  "tell a real figure from a stray one.")
+    with st.expander("Tables and charts", icon=":material/table_chart:"):
+        c1, c2, c3 = st.columns(3)
+        table_height = c1.number_input("Table height (pixels)", 200, 1200, int(u["table_height"]), 20)
+        decimals = c2.number_input("Decimal places", 0, 6, int(u["decimals"]))
+        sparklines = c3.toggle("Small trend charts on numbers", value=u["sparklines"])
+        d1, d2 = st.columns(2)
+        chart_one = d1.color_picker("Chart colour 1", value=u["chart_colors"][0])
+        chart_two = d2.color_picker("Chart colour 2", value=u["chart_colors"][1])
+        show_context = st.toggle("Show the sentence each number came from", value=u["show_context_column"],
+                                 help="Handy for checking a number is real.")
 
-    st.markdown("**Layout**")
-    tabs_picked = st.pills("Tabs on the research page", cfg.ALL_TABS, selection_mode="multi",
-                           default=[t for t in u["tabs"] if t in cfg.ALL_TABS])
-    headline = st.text_area("Subtitle under the title", value=u["headline"], height=80)
-
-    with st.container(border=True):
-        st.markdown("**Preview**")
-        st.markdown("This is how body text will look. "
-                    f":gray[Muted text sits beside it.] Accent: :material/palette: `{accent}`")
-        st.button("Primary button", type="primary", disabled=True)
-
-    if st.button("Save appearance", type="primary", icon=":material/save:"):
-        u.update(custom_style=custom_style, accent=accent, font_scale=float(font_scale),
+    if st.button("Save layout & look", type="primary", icon=":material/save:"):
+        u.update(nav=nav, home=home, hidden_pages=list(hidden), chart_style=chart_style, tech_details=tech_details,
+                 custom_style=custom_style, accent=accent, font_scale=float(font_scale),
                  density=density, table_height=int(table_height), decimals=int(decimals),
                  sparklines=sparklines, chart_colors=[chart_one, chart_two],
-                 show_context_column=show_context,
-                 tabs=list(tabs_picked) or cfg.ALL_TABS, headline=headline.strip() or u["headline"])
+                 show_context_column=show_context, tabs=list(tabs_picked) or cfg.ALL_TABS)
         cfg.save(s)
         st.rerun()
 
@@ -436,64 +438,62 @@ with tab_store:
             st.rerun()
 
 
-with tab_data:
-    st.markdown("**Portfolio auto-refresh**")
-    st.caption("Every stock held in any portfolio is re-analysed in the background this often — "
-               "one stock at a time, never alongside another run. A newly added stock is analysed "
-               "straight away. Set 0 to analyse each stock only once.")
+with tab_look:
+    st.markdown("**Portfolio**")
     p = portfolio.prefs(s)
-    hours = st.number_input("Re-analyse every (hours)", 0, 720, int(p["refresh_hours"]))
-    track = st.toggle("Track quantities and buy prices", value=p["track_positions"],
-                      help="Optional either way. Off hides value and P&L and just follows the stocks. "
-                           "These numbers are stored only on this computer and are never sent anywhere — "
-                           "not to price sources, and not to any AI model.")
-    l1, l2 = st.columns(2)
-    max_stock = l1.number_input("Warn when one stock is over (%)", 5, 100, int(p["max_stock_pct"]))
-    max_sector = l2.number_input("Warn when one sector is over (%)", 10, 100, int(p["max_sector_pct"]))
+    track = st.toggle("Keep track of how many shares I own and what I paid", value=p["track_positions"],
+                      help="Off just follows the stocks, without money. Either way, it stays on this computer.")
+    l1, l2, l3 = st.columns(3)
+    hours = l1.number_input("Check my stocks again every (hours)", 0, 720, int(p["refresh_hours"]),
+                            help="The app re-checks each stock in the background, one at a time. 0 = only once.")
+    max_stock = l2.number_input("Warn me if one stock is over (%)", 5, 100, int(p["max_stock_pct"]))
+    max_sector = l3.number_input("Warn me if one industry is over (%)", 10, 100, int(p["max_sector_pct"]))
     if st.button("Save portfolio settings", type="primary", icon=":material/save:"):
         s["portfolio"] = {**p, "refresh_hours": int(hours), "track_positions": track,
                           "max_stock_pct": int(max_stock), "max_sector_pct": int(max_sector)}
         cfg.save(s)
         portfolio.wake()
-        st.toast("Refresh schedule saved.", icon=":material/check_circle:")
+        st.toast("Saved.", icon=":material/check_circle:")
 
 
 with tab_note:
     n = alerts.prefs(s)
-    st.markdown("**How to reach you**")
+    st.markdown("**How should the app tell you?**")
     channels = st.pills("Channels", ["mac", "email"], selection_mode="multi", default=n["channels"],
-                        format_func={"mac": ":material/desktop_mac: macOS notification",
+                        format_func={"mac": ":material/desktop_mac: Pop-up on this Mac",
                                      "email": ":material/mail: Email"}.get, label_visibility="collapsed")
-    st.caption("Alerts always land in **Portfolio → Alerts** too. Everything is batched: a re-analysis of many "
-               "stocks sends one message, not one per stock.")
+    st.caption("You'll always find them under **Portfolio → Alerts** too. Several at once arrive as one message.")
     if "email" in (channels or []):
         with st.container(border=True):
-            st.markdown(":material/mail: **Email through your own Google Apps Script**")
-            st.caption("Mail is sent by a small script in your Google account, to your own address only — no "
-                       "third-party service, and the secret below stops anyone else from using it.")
-            url = st.text_input("Web app URL", value=n["email_url"], placeholder="https://script.google.com/macros/s/…/exec")
-            token = st.text_input("Secret", value=n["email_token"], type="password")
+            st.markdown(":material/mail: **Email, sent from your own Google account**")
+            st.caption("A one-time setup — the user guide shows each step, or ask any AI assistant to do it with "
+                       "the setup prompt in the guide. Emails only ever go to you.")
+            url = st.text_input("Web address from the setup", value=n["email_url"],
+                                placeholder="https://script.google.com/macros/s/…/exec")
+            token = st.text_input("Password from the setup", value=n["email_token"], type="password")
     else:
         url, token = n["email_url"], n["email_token"]
-    st.markdown("**What to alert on**")
+    st.markdown("**Tell me when…**")
     k1, k2, k3, k4 = st.columns(4)
-    verdict = k1.toggle("Verdict changes", n["verdict"])
-    filing = k2.toggle("New filings", n["filing"])
-    guidance = k3.toggle("Missed guidance", n["guidance"], help="Uses the model to grade management's promises.")
-    price = k4.toggle("Price alerts", n["price"], help="Set levels on each stock's page.")
-    st.markdown("**Weekly digest**")
+    verdict = k1.toggle("The AI's view changes", n["verdict"])
+    filing = k2.toggle("A company publishes something", n["filing"],
+                       help="Including important announcements and warning signs in a new annual report.")
+    guidance = k3.toggle("A promise isn't kept", n["guidance"], help="Needs AI turned on.")
+    price = k4.toggle("A price I'm watching is reached", n["price"],
+                      help="Set prices to watch on each company's page.")
+    st.markdown("**Weekly summary**")
     d1, d2 = st.columns(2)
-    digest = d1.toggle("Make a weekly digest", n["digest"])
+    digest = d1.toggle("Make a summary of my week", n["digest"])
     day = d2.selectbox("On", range(7), index=int(n["digest_day"]), format_func=alerts.DAYS.__getitem__,
                        disabled=not digest)
     b1, b2 = st.columns(2)
-    if b1.button("Save notification settings", type="primary", icon=":material/save:", width="stretch"):
+    if b1.button("Save alert settings", type="primary", icon=":material/save:", width="stretch"):
         s["notify"] = {**n, "channels": channels or [], "email_url": url.strip(), "email_token": token.strip(),
                        "verdict": verdict, "filing": filing, "guidance": guidance, "price": price,
                        "digest": digest, "digest_day": int(day)}
         cfg.save(s)
-        st.toast("Notification settings saved.", icon=":material/check_circle:")
-    if b2.button("Send a test", icon=":material/send:", width="stretch", disabled=not channels):
+        st.toast("Saved.", icon=":material/check_circle:")
+    if b2.button("Send me a test", icon=":material/send:", width="stretch", disabled=not channels):
         test = {**s, "notify": {**n, "channels": channels, "email_url": url.strip(), "email_token": token.strip()}}
         problems = alerts.notify("Test from Stock Data Hub", "Notifications are working.", test,
                                  alerts.email_page("Notifications are working",

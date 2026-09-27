@@ -419,7 +419,11 @@ def resolve(symbol: str) -> dict | None:
 def _yahoo(ticker: str) -> str:
     if ticker.startswith("^"):
         return ticker  # an index, e.g. ^NSEI (Nifty 50)
-    return f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"  # screener uses BSE codes for BSE-only stocks
+    if ticker.isdigit():
+        return f"{ticker}.BO"  # screener uses BSE codes for BSE-only stocks
+    import screener  # late: screener imports this module
+    sme = screener.listed(day_slot())
+    return f"{ticker}-SM.NS" if ticker in set(sme.loc[sme["SME"], "Ticker"]) else f"{ticker}.NS"
 
 
 def _screener_prices(screener_id, days: int) -> pd.DataFrame | None:

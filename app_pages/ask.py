@@ -5,6 +5,7 @@ import streamlit as st
 import assistant
 import core
 import portfolio as pf
+import ui
 
 settings = st.session_state.settings
 ai_ready = core.ai_signature(settings)[0]
@@ -30,20 +31,20 @@ with st.sidebar:
 with st.container(horizontal=True, vertical_alignment="center"):
     st.markdown("### :material/auto_awesome: Ask AI", width="content")
     st.space("stretch")
-    with st.popover("Scope", icon=":material/tune:"):
+    with st.popover("Options", icon=":material/tune:"):
         known = assistant._known()
         st.multiselect("Only these companies", sorted(known), key="ask_scope", placeholder="Whatever I mention",
                        format_func=lambda t: f"{t} · {known[t]}")
-        st.toggle("Search my filings", value=True, key="ask_filings",
-                  help="Read matching passages from downloaded concalls, presentations and reports.")
+        st.toggle("Look in company reports too", value=True, key="ask_filings",
+                  help="Reads the relevant parts of the reports the app has downloaded.")
     if ss.chat_id and st.button("Delete chat", icon=":material/delete:", type="tertiary"):
         assistant.delete(ss.chat_id)
         ss.chat_id, ss.chat = None, []
         st.rerun()
 
 if not ai_ready:
-    st.info("Ask AI needs a model — set one up in **Settings → Models & keys**. A local Ollama model is free "
-            "and keeps everything on this computer.", icon=":material/info:")
+    st.info("Ask AI needs an AI turned on. Set it up in **Settings** — the free option keeps everything "
+            "on this computer.", icon=":material/info:")
 
 
 def show_sources(sources: list[dict], key: str):
@@ -57,7 +58,7 @@ def show_sources(sources: list[dict], key: str):
                     }.get(s["kind"], ":material/source:")
             with st.popover(f"{i} · {s['label'].split(' · ')[0]}", icon=icon, type="tertiary"):
                 st.markdown(f"**[{i}]** {s['label']}")
-                if s.get("path"):
+                if s.get("path") and ui.tech():
                     st.caption(f":material/folder: `{s['path']}` · page {s.get('page')}")
 
 
@@ -66,19 +67,19 @@ def ask(question: str):
 
 
 # --- Conversation ----------------------------------------------------------------------
-typed = st.chat_input("Ask about a company, your portfolio or your filings…", disabled=not ai_ready)
+typed = st.chat_input("Ask about a company, your stocks or their reports…", disabled=not ai_ready)
 if not ss.chat and not typed:
     held = list(pf.tracked())
     with st.container(horizontal_alignment="center"):
         st.space("large")
         st.markdown("## What would you like to know?", text_alignment="center")
-        st.markdown(":gray[Answers come from your portfolio, your saved analyses and your downloaded filings — "
-                    "every fact cited.]", text_alignment="center")
+        st.markdown(":gray[Answers come from your stocks and the companies' own reports — and show where "
+                    "each fact came from.]", text_alignment="center")
         a, b = (held + ["TCS", "INFY"])[:2]
         ideas = ["Which of my holdings look weakest right now, and why?",
                  f"How have {a}'s margins moved over the last few quarters?",
                  f"Compare {a} and {b}",
-                 "What did management say about demand in the latest concalls?"]
+                 "What did the bosses say about demand on their latest investor calls?"]
         choice = st.pills("Try", ideas, label_visibility="collapsed", key="ask_idea")
         if choice:
             ask(choice)
@@ -106,9 +107,9 @@ if question and ai_ready:
             holder = {"progress": lambda msg: status.update(label=msg)}
             stream = assistant.answer(question, history, settings, holder, ss.get("ask_scope") or None,
                                       ss.get("ask_filings", True))
-            status.update(label=f"Reading your sources and asking {settings['ai']['model']}…")
+            status.update(label="Thinking…")
             first = next(stream, None)  # covers retrieval, any fallbacks, and the model's thinking
-            status.update(label=f"{holder.get('model')} is answering from {len(holder.get('sources') or [])} source(s)",
+            status.update(label=f"Answering from {len(holder.get('sources') or [])} source(s)",
                           state="complete" if first else "error")
 
         def chained():
@@ -118,10 +119,11 @@ if question and ai_ready:
 
         st.write_stream(chained())
         sources = holder.get("sources") or []
-    meta = (f":material/memory: `{holder.get('model')}`"
-            + (f" · stood in for `{settings['ai']['model']}`, which was busy or too slow to start"
-               if holder.get("fallback") else "")
-            + f" · {holder.get('seconds', 0):.0f}s · {len(sources)} source(s)")
+    meta = ((f":material/memory: `{holder.get('model')}`"
+             + (f" · stood in for `{settings['ai']['model']}`, which was busy or too slow to start"
+                if holder.get("fallback") else "")
+             + f" · {holder.get('seconds', 0):.0f}s · {len(sources)} source(s)") if ui.tech(settings)
+            else f":material/fact_check: Based on {len(sources)} source(s)")
     ss.chat.append({"role": "assistant", "content": holder.get("text") or
                     f":material/error: No answer — {holder.get('error')}. Try again in a moment.",
                     "sources": sources, "followups": holder.get("followups") or [], "meta": meta})

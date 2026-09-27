@@ -13,6 +13,7 @@ from datetime import datetime
 
 import pandas as pd
 
+import llm
 from core import (DOCX_AVAILABLE, OPENPYXL_AVAILABLE, STATEMENT_TABLES, _count_downloaded,
                   _to_number, correlate_numbers)
 
@@ -150,9 +151,17 @@ def _xl_section(ws, row, title, last_col, note=None):
     return row + 1
 
 
+# Column names as a reader sees them; the code keeps its own names for them.
+HEADER_WORDS = {"Ticker": "Symbol", "AI verdict": "AI view", "Filings": "Reports", "Figures": "Numbers",
+                "QoQ": "vs last qtr", "Sales QoQ": "Sales vs last qtr", "Profit QoQ": "Profit vs last qtr",
+                "In filings": "Times in reports", "Filing latest": "Report latest", "Filing low": "Report low",
+                "Filing median": "Report median", "Filing high": "Report high", "Filing range": "Report range",
+                "Screener": "Website figure", "Category": "Topic"}
+
+
 def _xl_pill(ws, row, col1, col2, label):
     color = TONE_COLOR.get(label, MUTED)
-    _xl_merge(ws, row, col1, col2, (label or "n/a").upper(), size=10, bold=True, color=color,
+    _xl_merge(ws, row, col1, col2, llm.VIEW_WORDS.get(label, label or "n/a").upper(), size=10, bold=True, color=color,
               fill=TINT[color], h="center")
 
 
@@ -240,7 +249,7 @@ def _xl_ticker_sheet(wb, r):
 
     news = r.get("news") or {}
     if news.get("headlines"):
-        note = (f"Summarised locally by {news.get('model')} from the headlines below." if news.get("summary") else None)
+        note = ("An AI summary of the headlines below." if news.get("summary") else None)
         row = _xl_section(ws, row, "Recent news", last_col, note=note)
         if news.get("summary"):
             _xl_merge(ws, row, 2, last_col, news["summary"], size=10.5, fill=PAPER, wrap=True, v="top")
@@ -367,7 +376,7 @@ def _xl_correlated_sheet(wb, results):
             size=9, italic=True, color=MUTED)
     ws.row_dimensions[1].height = 26
     for j, (name, _) in enumerate(cols, start=1):
-        _xl_put(ws, 4, j, name, bold=True, color=WHITE, fill=ACCENT, wrap=True, h="center")
+        _xl_put(ws, 4, j, HEADER_WORDS.get(name, name), bold=True, color=WHITE, fill=ACCENT, wrap=True, h="center")
     for i, (ticker, row) in enumerate(rows, start=5):
         band = PAPER if i % 2 else None
         values = [ticker, row["Metric"], row["Group"], row["Screener"], row["Latest quarter"],
@@ -403,7 +412,7 @@ def _xl_figures_sheet(wb, results):
                       "check the Context column before relying on a number.", size=9, italic=True, color=MUTED)
     ws.row_dimensions[1].height = 26
     for j, (name, _) in enumerate(cols, start=1):
-        _xl_put(ws, 4, j, name, bold=True, color=WHITE, fill=ACCENT)
+        _xl_put(ws, 4, j, HEADER_WORDS.get(name, name), bold=True, color=WHITE, fill=ACCENT)
     for i, (ticker, f) in enumerate(rows, start=5):
         values = [ticker, f.get("Source"), f.get("Category"), f.get("Label"), f.get("Value"),
                   f.get("Unit"), f.get("Currency"), f.get("Page"), f.get("Context")]
@@ -448,9 +457,9 @@ def build_excel_workbook(results: list[dict]) -> bytes:
     L = {name: get_column_letter(c) for name, c in col.items()}
     rng = lambda name: f"{L[name]}{first}:{L[name]}{last}"  # noqa: E731
     tiles = [("Companies", f"=COUNTA({rng('Ticker')})"),
-             ("Positive verdicts", f'=COUNTIF({rng("AI verdict")},"Positive")'),
-             ("Cautious verdicts", f'=COUNTIF({rng("AI verdict")},"Cautious")'),
-             ("Filings downloaded", f"=SUM({rng('Filings')})"),
+             ("AI: looks good", f'=COUNTIF({rng("AI verdict")},"{llm.VIEW_WORDS["Positive"]}")'),
+             ("AI: be careful", f'=COUNTIF({rng("AI verdict")},"{llm.VIEW_WORDS["Cautious"]}")'),
+             ("Reports read", f"=SUM({rng('Filings')})"),
              ("Figures extracted", f"=SUM({rng('Figures')})")]
     tile_spans = [(2, 3), (4, 6), (7, 9), (10, 12), (13, 16)]  # ~equal widths
     for (label, formula), (c1, c2) in zip(tiles, tile_spans):
@@ -461,7 +470,7 @@ def build_excel_workbook(results: list[dict]) -> bytes:
     ov.row_dimensions[6].height = 32
 
     for name, c in col.items():
-        _xl_put(ov, head, c, name, size=9, bold=True, color=WHITE, fill=ACCENT, wrap=True,
+        _xl_put(ov, head, c, HEADER_WORDS.get(name, name), size=9, bold=True, color=WHITE, fill=ACCENT, wrap=True,
                 h="left" if name in ("Ticker", "Company") else "center")
     ov.row_dimensions[head].height = 30
     thin = Border(bottom=Side(style="thin", color=LINE))
@@ -476,7 +485,7 @@ def build_excel_workbook(results: list[dict]) -> bytes:
             continue
         verdict = r.get("ai_verdict")
         tone = TONE_COLOR.get(verdict, MUTED)
-        put("AI verdict", verdict or "–", bold=True, color=tone, fill=TINT[tone] if verdict else None, h="center")
+        put("AI verdict", llm.VIEW_WORDS.get(verdict, verdict or "–"), bold=True, color=tone, fill=TINT[tone] if verdict else None, h="center")
         sentiment = (r.get("news") or {}).get("sentiment")
         put("News", sentiment or "–", color=TONE_COLOR.get(sentiment, MUTED), h="center")
         m = r.get("metrics") or {}
@@ -501,8 +510,8 @@ def build_excel_workbook(results: list[dict]) -> bytes:
         ov.conditional_formatting.add(rng(name), CellIsRule(operator="greaterThan", formula=["0"], font=Font(color=GOOD)))
         ov.conditional_formatting.add(rng(name), CellIsRule(operator="lessThan", formula=["0"], font=Font(color=BAD)))
     ov.freeze_panes = ov.cell(row=first, column=col["AI verdict"])
-    _xl_put(ov, last + 2, 2, "Click a ticker to open its report. Verdicts are written by a local AI model from "
-                             "scraped data and can be wrong; this is not investment advice.",
+    _xl_put(ov, last + 2, 2, "Click a symbol to open its page. The AI's view is written by an AI model from "
+                             "public data and can be wrong; this is not investment advice.",
             size=8.5, italic=True, color=MUTED)
 
     wb.calculation.fullCalcOnLoad = True  # openpyxl can't store results; make Excel compute on open
@@ -616,7 +625,7 @@ def _w_par(container, text="", size=None, color=INK, bold=False, italic=False, a
 
 def _w_pill(par, label):
     color = TONE_COLOR.get(label, MUTED)
-    run = _w_run(par, f"  {(label or 'n/a').upper()}  ", size=8.5, bold=True, color=color, spacing=10)
+    run = _w_run(par, f"  {llm.VIEW_WORDS.get(label, label or 'n/a').upper()}  ", size=8.5, bold=True, color=color, spacing=10)
     _w_set(run.element.get_or_add_rPr(), _w_xml("w:shd", **{"w:val": "clear", "w:color": "auto", "w:fill": TINT[color]}))
 
 
@@ -801,7 +810,7 @@ def _w_company(doc, r):
         _w_heading(doc, "Recent news")
         if news.get("summary"):
             _w_par(doc, news["summary"], after=2)
-            _w_par(doc, f"Summarised locally by {news.get('model')} from the headlines below.", size=8,
+            _w_par(doc, "An AI summary of the headlines below.", size=8,
                    italic=True, color=MUTED, after=6)
         for h in news["headlines"]:
             par = _w_par(doc, after=3)
@@ -852,7 +861,7 @@ def _w_correlated(doc, r, limit=14):
             ("QoQ", 1.9), ("In filings", 1.8), ("Filing range", 3.0)]
     table = _w_table(doc, len(rows) + 1, [Cm(w) for _, w in cols])
     for j, (name, _) in enumerate(cols):
-        _w_cell_text(_w_cell(table.cell(0, j), fill=ACCENT), name, size=8.5, bold=True, color=WHITE,
+        _w_cell_text(_w_cell(table.cell(0, j), fill=ACCENT), HEADER_WORDS.get(name, name), size=8.5, bold=True, color=WHITE,
                      align=WD_ALIGN_PARAGRAPH.CENTER if j else None)
 
     def num(value, pct=False):
@@ -895,7 +904,7 @@ def build_word_document(results: list[dict]) -> bytes:
     cols = [("Ticker", 2.0), ("Company", 5.2), ("AI verdict", 2.3), ("News", 2.0), ("Price", 1.9), ("P/E", 1.5), ("ROE", 2.1)]
     glance = _w_table(doc, len(results) + 1, [Cm(w) for _, w in cols])
     for j, (name, _) in enumerate(cols):
-        _w_cell_text(_w_cell(glance.cell(0, j), fill=ACCENT), name, size=8.5, bold=True, color=WHITE,
+        _w_cell_text(_w_cell(glance.cell(0, j), fill=ACCENT), HEADER_WORDS.get(name, name), size=8.5, bold=True, color=WHITE,
                      align=WD_ALIGN_PARAGRAPH.RIGHT if j >= 4 else None)
     for i, r in enumerate(results, start=1):
         line = {"bottom": (4, LINE)}

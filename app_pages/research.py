@@ -17,6 +17,7 @@ settings = st.session_state.settings
 ai = settings["ai"]
 features = settings["features"]
 core.apply_settings(settings)
+CATEGORY_WORDS = core.CATEGORY_WORDS
 
 st.session_state.setdefault("results", [])
 st.session_state.setdefault("run_started", 0.0)
@@ -25,53 +26,56 @@ ai_ready, ai_status = llm.provider_status(settings) if ai["enabled"] else (False
 models = llm.list_models(ai["provider"], cfg.base_url(settings, ai["provider"]),
                          cfg.api_key(settings, ai["provider"])) if ai["enabled"] else {}
 
-# --- Sidebar ----------------------------------------------------------------
-with st.sidebar:
-    st.markdown("### :material/tune: Configuration")
-    with st.form("config", border=False):
-        raw_tickers = st.text_area(
-            "Tickers", value=settings["data"]["default_tickers"], height=80,
-            help="Comma-separated screener.in symbols, e.g. RELIANCE, TCS, INFY")
+# --- Header and the three steps ---------------------------------------------------
+st.title("Research")
+st.caption("Look into several companies at once and download everything in one spreadsheet or report. "
+           "For a single company, the **Stock** page is quicker.")
+
+with st.form("config"):
+    st.markdown("**1 · Which companies?**")
+    raw_tickers = st.text_input(
+        "Companies", value=settings["data"]["default_tickers"], label_visibility="collapsed",
+        placeholder="Their stock symbols, separated by commas — e.g. TCS, INFY, RELIANCE",
+        help="A company's symbol is the short name shown under its name on the Stock page.")
+    st.markdown("**2 · What should it read?**")
+    selected_categories = st.pills(
+        "Reports", core.WANTED_CATEGORIES, selection_mode="multi", label_visibility="collapsed",
+        default=settings["data"]["categories"], format_func=lambda c: CATEGORY_WORDS.get(c, c))
+    with st.expander("More options", icon=":material/tune:"):
         watchlist = st.file_uploader(
-            "…or upload a watchlist", type=["csv", "xlsx", "xls"],
-            help="A CSV or Excel file with a 'ticker' column. Anything in it is analysed "
-                 "instead of the box above.")
-        selected_categories = st.pills(
-            "Filings to download", core.WANTED_CATEGORIES, selection_mode="multi",
-            default=settings["data"]["categories"])
+            "Or upload a list of companies", type=["csv", "xlsx", "xls"],
+            help="A spreadsheet with a column called 'ticker'. It's used instead of the box above.")
         timeframe_label = st.selectbox(
-            "Timeframe", list(core.TIMEFRAME_OPTIONS),
+            "How far back", list(core.TIMEFRAME_OPTIONS),
             index=list(core.TIMEFRAME_OPTIONS).index(settings["data"]["timeframe"])
             if settings["data"]["timeframe"] in core.TIMEFRAME_OPTIONS else 0,
-            help="How many of the most recent filings to pull per source.")
-        use_ai = st.toggle("AI summaries, verdicts & news", value=ai["enabled"] and ai_ready,
-                           disabled=not ai_ready)
+            help="How many of each kind of report to read.")
+        use_ai = st.toggle("Write AI summaries", value=ai["enabled"] and ai_ready, disabled=not ai_ready,
+                           help=None if ai_ready else "Turn on AI in Settings first.")
         model = st.selectbox(
-            "Model", list(models), format_func=lambda m: models.get(m, m), disabled=not models,
+            "Which AI", list(models), format_func=lambda m: models.get(m, m), disabled=not models,
             index=list(models).index(ai["model"]) if ai["model"] in models else (0 if models else None),
-            placeholder="No models available", help="Change providers and keys on the Settings page.")
-        run_button = st.form_submit_button("Run analysis", type="primary",
-                                           icon=":material/play_arrow:", width="stretch")
+            placeholder="None set up yet", help="Add or change AIs in Settings.")
+    st.markdown("**3 · Go**")
+    run_button = st.form_submit_button("Analyse", type="primary", icon=":material/play_arrow:")
 
+st.download_button("Need a list to upload? Download an example", core.watchlist_template(),
+                   file_name="watchlist_template.csv", mime="text/csv", icon=":material/download:", type="tertiary")
+if ui.tech(settings):
     st.badge(ai_status, icon=":material/memory:" if ai_ready else ":material/cloud_off:",
              color="green" if ai_ready else "gray")
-    if not ai_ready and ai["enabled"]:
-        st.caption("Set up a model on the **Settings** page — a local one needs nothing but Ollama, "
-                   "and the user guide walks through it in about ten minutes.")
-    st.link_button("User guide (PDF)", core.GUIDE_URL, icon=":material/menu_book:", width="stretch",
-                   type="secondary" if ai_ready else "primary")
-    st.download_button("Watchlist template (CSV)", core.watchlist_template(),
-                       file_name="watchlist_template.csv", mime="text/csv",
-                       icon=":material/download:", type="tertiary", width="stretch")
-    st.caption(f"PDFs capped at {core.MAX_FILE_MB} MB and cached in `~/.stock-data-hub`. "
-               f"Results cached for {core.CACHE_TTL_SECONDS // 60} min.")
-    for missing, lib, feature in [(not core.PDFPLUMBER_AVAILABLE, "pdfplumber", "PDF extraction"),
-                                  (not core.DOCX_AVAILABLE, "python-docx", "Word export"),
-                                  (not core.OPENPYXL_AVAILABLE, "openpyxl", "Excel export")]:
-        if missing:
-            st.warning(f"`{lib}` not installed — {feature} disabled.", icon=":material/warning:")
+    st.caption(f"Reports up to {core.MAX_FILE_MB} MB are downloaded and kept in `~/.stock-data-hub`. "
+               f"Results are reused for {core.CACHE_TTL_SECONDS // 60} min.")
+if not ai_ready and ai["enabled"]:
+    st.caption(":material/info: AI summaries are off. Turn them on in **Settings** — it's free.")
+for missing, lib, feature in [(not core.PDFPLUMBER_AVAILABLE, "pdfplumber", "reading reports"),
+                              (not core.DOCX_AVAILABLE, "python-docx", "Word downloads"),
+                              (not core.OPENPYXL_AVAILABLE, "openpyxl", "Excel downloads")]:
+    if missing:
+        st.warning(f"Part of the app is missing, so {feature} is switched off. Reinstalling the app fixes it.",
+                   icon=":material/warning:")
 
-# The model picked in the sidebar applies to this run without being saved.
+# The model picked in the form applies to this run without being saved.
 run_settings = {**settings, "ai": {**ai, "enabled": bool(use_ai and model), "model": model or ai["model"]}}
 
 tickers = [t.strip().upper() for t in raw_tickers.split(",") if t.strip()]
@@ -82,23 +86,18 @@ if watchlist is not None:
         tickers = uploaded_tickers
 max_per_category = core.TIMEFRAME_OPTIONS[timeframe_label]
 
-# --- Header -----------------------------------------------------------------
-st.caption(":material/monitoring: EQUITY RESEARCH DESK")
-st.title("Indian stock data hub")
-st.markdown(f":gray[{settings['ui']['headline']}]")
-
 if upload_error:
     st.error(upload_error, icon=":material/error:")
 
 if run_button:
     if not tickers:
-        st.toast("Enter at least one ticker, or upload a watchlist.", icon=":material/warning:")
+        st.toast("Type at least one company symbol.", icon=":material/warning:")
     elif not selected_categories:
-        st.toast("Select at least one filing type.", icon=":material/warning:")
+        st.toast("Pick at least one kind of report to read.", icon=":material/warning:")
     else:
         try:
             progress = st.progress(0.0, text="Starting…")
-            with st.spinner(f"Scraping, downloading and analysing {len(tickers)} ticker(s)…"):
+            with st.spinner(f"Looking into {len(tickers)} compan{'y' if len(tickers) == 1 else 'ies'} — about a minute each…"):
                 st.session_state.run_started = time.time()
                 results = core.scrape_all(tickers, run_settings, tuple(selected_categories),
                                           max_per_category, progress=progress)
@@ -109,56 +108,50 @@ if run_button:
                     previous, changes = core.changes_since_last(r)
                     r["changes"], r["previous_at"] = changes, previous["ts"] if previous else None
                     if features["history"]:
-                        core.save_run(r, label=f"{len(tickers)} ticker run")
+                        core.save_run(r, label=f"Analysed with {len(tickers) - 1} other(s)" if len(tickers) > 1 else "Analysed")
                 st.session_state.results = results
             progress.empty()
             ok_count = sum(1 for r in st.session_state.results if r["ok"])
             if ok_count:
-                st.toast(f"Completed {ok_count} ticker(s).", icon=":material/check_circle:")
+                st.toast(f"Finished {ok_count} compan{'y' if ok_count == 1 else 'ies'}.", icon=":material/check_circle:")
             if len(st.session_state.results) - ok_count:
-                st.toast(f"{len(st.session_state.results) - ok_count} ticker(s) failed.",
+                st.toast(f"{len(st.session_state.results) - ok_count} couldn't be loaded.",
                          icon=":material/error:")
         except Exception as exc:
-            st.error(f"Run failed: {exc}", icon=":material/error:")
-            st.code(traceback.format_exc())
+            st.error("Something went wrong. Try again in a minute.", icon=":material/error:")
+            if ui.tech(settings):
+                st.code(traceback.format_exc())
 
 if llm.LAST_BLOCK:
-    st.warning(f"**Spending limit reached.** {llm.LAST_BLOCK} Everything except the AI summaries "
-               "still ran normally.", icon=":material/payments:")
+    st.warning("**You've reached the spending limit you set** for the AI, so summaries were skipped. "
+               "Everything else worked. You can change the limit in Settings.", icon=":material/payments:")
 
 budget = llm.budget_state(run_settings)
 if budget["enabled"] and budget["paid"]:
     for pct, label in ((budget["cost_pct"], "monthly budget"), (budget["token_pct"], "token budget")):
         if settings["budget"]["warn_at"] <= pct < 100:
-            st.info(f"You have used {pct:.0f}% of your {label} this month. "
-                    "The Settings page shows where it went.", icon=":material/info:")
+            st.info(f"You've used {pct:.0f}% of your AI {label} this month. Settings shows where it went.",
+                    icon=":material/info:")
 
 results = st.session_state.results
 
 if not results:
-    with st.container(border=True, horizontal_alignment="center"):
-        st.space("small")
-        st.markdown("### :material/query_stats: No analysis yet", text_alignment="center")
-        st.markdown(
-            ":gray[Add tickers in the sidebar — or upload a watchlist — choose the filings you care "
-            "about, then hit **Run analysis**.  \nYou'll get a snapshot per company, quarterly trends, "
-            "every figure extracted from the PDFs, and Excel / Word reports.]", text_alignment="center")
-        st.space("small")
     if features["history"] and archive.list_runs(limit=1):
-        st.caption("Past analyses are on the **History** page, and everything downloaded so far is "
-                   "searchable on the **Archive** page.")
+        st.caption("Earlier checks are on the **History** page.")
     st.stop()
 
 ok_results = [r for r in results if r["ok"]]
 failed_results = [r for r in results if not r["ok"]]
-
-# --- KPI strip + exports -----------------------------------------------------
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Tickers", len(results), border=True)
-k2.metric("Successful", len(ok_results), border=True)
-k3.metric("Failed", len(failed_results), border=True)
-k4.metric("Filings downloaded", sum(core._count_downloaded(r) for r in ok_results), border=True)
-k5.metric("Figures extracted", f"{sum(len(r.get('figures') or []) for r in ok_results):,}", border=True)
+if ui.tech(settings):
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Companies", len(results), border=True)
+    k2.metric("Done", len(ok_results), border=True)
+    k3.metric("Couldn't load", len(failed_results), border=True)
+    k4.metric("Reports read", sum(core._count_downloaded(r) for r in ok_results), border=True)
+    k5.metric("Numbers found", f"{sum(len(r.get('figures') or []) for r in ok_results):,}", border=True)
+else:
+    st.markdown(f"**{len(ok_results)} of {len(results)} companies done** :gray[· "
+                f"{sum(core._count_downloaded(r) for r in ok_results)} reports read]")
 
 # Streamlit reruns the whole script on any widget interaction. Rebuilding a
 # multi-thousand-row workbook every time is slow and risks handing the browser
@@ -188,17 +181,17 @@ with st.container(horizontal=True, horizontal_alignment="right"):
     if core.OPENPYXL_AVAILABLE:
         xlsx, xlsx_err = _cached_export("xlsx", exports.build_excel_workbook)
         if xlsx_err:
-            st.error(f"Could not build Excel workbook: {xlsx_err}")
+            st.caption("The spreadsheet couldn't be made this time.")
         else:
-            st.download_button("Excel workbook", data=xlsx, file_name=f"stock_report_{stamp}.xlsx",
+            st.download_button("Download spreadsheet", data=xlsx, file_name=f"stock_report_{stamp}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                icon=":material/table_view:")
     if core.DOCX_AVAILABLE:
         docx, docx_err = _cached_export("docx", exports.build_word_document)
         if docx_err:
-            st.error(f"Could not build Word document: {docx_err}")
+            st.caption("The Word report couldn't be made this time.")
         else:
-            st.download_button("Word report", data=docx, file_name=f"stock_report_{stamp}.docx",
+            st.download_button("Download report", data=docx, file_name=f"stock_report_{stamp}.docx",
                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                icon=":material/description:")
 

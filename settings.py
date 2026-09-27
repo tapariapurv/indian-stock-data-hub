@@ -141,13 +141,33 @@ DEFAULTS = {
         "decimals": 2,
         "show_context_column": True,
         "tabs": ["Overview", "Financials", "All numbers", "What changed", "Guidance", "Filings"],
+        "nav": "top",                # menu across the top, or "sidebar"
+        "home": "Home",              # the page the app opens on
+        "hidden_pages": [],          # pages left out of the menu
+        "chart_style": "Detailed",   # trading candles, or "Simple" for a plain price line
+        "tech_details": False,       # "Show more details": the full detail the app used to show
         "history_page_size": 25,
-        "headline": "Scrape screener.in, pull the latest filings, extract every figure from them, "
-                    "and summarise with the model of your choice.",
     },
 }
 
 ALL_TABS = list(DEFAULTS["ui"]["tabs"])
+# Every page: (file, title, icon, section). "" is the always-visible part of the menu.
+PAGES = [
+    ("home.py", "Home", ":material/home:", ""),
+    ("stock.py", "Stock", ":material/candlestick_chart:", ""),
+    ("portfolio_page.py", "Portfolio", ":material/account_balance_wallet:", ""),
+    ("research.py", "Research", ":material/query_stats:", ""),
+    ("ask.py", "Ask AI", ":material/auto_awesome:", ""),
+    ("screener_page.py", "Screener", ":material/filter_alt:", "More"),
+    ("compare.py", "Compare", ":material/compare_arrows:", "More"),
+    ("archive_search.py", "Archive", ":material/search:", "More"),
+    ("history.py", "History", ":material/history:", "More"),
+    ("settings_page.py", "Settings", ":material/settings:", "More"),
+]
+# Saved start pages and hidden pages from the short-lived plain-English names.
+OLD_TITLES = {"Company": "Stock", "My portfolio": "Portfolio", "Find stocks": "Screener", "Analyse many": "Research",
+              "Search documents": "Archive", "Past analyses": "History"}
+ALWAYS_SHOWN = {"Home", "Settings"}  # so nobody can hide their way out of the app
 DENSITIES = {"Compact": 0.35, "Comfortable": 0.75, "Roomy": 1.2}
 
 
@@ -168,7 +188,11 @@ def load() -> dict:
         stored = json.loads(SETTINGS_PATH.read_text())
     except (OSError, ValueError):
         stored = {}
-    return _merge(DEFAULTS, stored if isinstance(stored, dict) else {})
+    out = _merge(DEFAULTS, stored if isinstance(stored, dict) else {})
+    ui = out["ui"]
+    ui["home"] = OLD_TITLES.get(ui["home"], ui["home"])
+    ui["hidden_pages"] = [OLD_TITLES.get(t, t) for t in ui["hidden_pages"]]
+    return out
 
 
 def save(settings: dict) -> None:

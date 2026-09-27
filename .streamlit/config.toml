@@ -50,3 +50,7 @@ enableStaticServing = true
 runOnSave = true
 fileWatcherType = "auto"
 folderWatchBlacklist = ["downloads", "tests", "docs", "static", ".git", ".claude"]
+
+[client]
+# Hide the developer menu items (Deploy, rerun, clear cache) -- they mean nothing to a user of this app.
+toolbarMode = "minimal"

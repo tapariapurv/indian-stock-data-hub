@@ -164,17 +164,22 @@ def store_document(sha: str, ticker: str, category: str, path: str,
             [(text, ticker, category, page, doc_id) for page, text in pages if text.strip()])
 
 
-def document_text(ticker: str, category: str) -> str:
-    """All text of the most recently indexed document of a category."""
+def document_pages(ticker: str, category: str | None = None, path: str | None = None) -> list[tuple[int, str]]:
+    """(page, text) of the most recently indexed document of a category, or of the file at `path`."""
     init()
     with connect() as conn:
         row = conn.execute(
-            "SELECT id FROM documents WHERE ticker=? AND category=? ORDER BY indexed_at DESC LIMIT 1",
-            (ticker, category)).fetchone()
+            "SELECT id FROM documents WHERE ticker=? AND " + ("path=?" if path else "category=?")
+            + " ORDER BY indexed_at DESC LIMIT 1", (ticker, path or category)).fetchone()
         if row is None:
-            return ""
-        rows = conn.execute("SELECT text FROM pages WHERE doc_id=? ORDER BY page", (row["id"],)).fetchall()
-    return "\n".join(r["text"] for r in rows)
+            return []
+        rows = conn.execute("SELECT page, text FROM pages WHERE doc_id=? ORDER BY page", (row["id"],)).fetchall()
+    return [(r["page"], r["text"]) for r in rows]
+
+
+def document_text(ticker: str, category: str) -> str:
+    """All text of the most recently indexed document of a category."""
+    return "\n".join(text for _, text in document_pages(ticker, category))
 
 
 # Words that carry no meaning in a filing search. Without this, a natural

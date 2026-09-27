@@ -59,19 +59,14 @@ portfolio.start_refresher()
 
 st.html(cfg.style_css(st.session_state.settings["ui"]))
 
-pages = {
-    "Portfolio": [
-        st.Page("app_pages/portfolio_page.py", title="Portfolio", icon=":material/account_balance_wallet:"),
-        st.Page("app_pages/stock.py", title="Stock", icon=":material/candlestick_chart:"),
-        st.Page("app_pages/screener_page.py", title="Screener", icon=":material/filter_alt:"),
-        st.Page("app_pages/compare.py", title="Compare", icon=":material/compare_arrows:"),
-    ],
-    "Research": [
-        st.Page("app_pages/research.py", title="Research", icon=":material/query_stats:", default=True),
-        st.Page("app_pages/ask.py", title="Ask AI", icon=":material/auto_awesome:"),
-        st.Page("app_pages/archive_search.py", title="Archive", icon=":material/search:"),
-        st.Page("app_pages/history.py", title="History", icon=":material/history:"),
-    ],
-    "App": [st.Page("app_pages/settings_page.py", title="Settings", icon=":material/settings:")],
-}
-st.navigation(pages).run()
+u = st.session_state.settings["ui"]
+hidden = set(u["hidden_pages"]) - cfg.ALWAYS_SHOWN
+pages = {}
+for file, title, icon, section in cfg.PAGES:
+    if title not in hidden:
+        pages.setdefault(section, []).append(
+            st.Page(f"app_pages/{file}", title=title, icon=icon, url_path=title.lower().replace(" ", "-"),
+                    default=title == (u["home"] if u["home"] not in hidden else "Home")))
+if u["nav"] == "sidebar":  # a side menu has room for every page in the open
+    pages = {"": [p for group in pages.values() for p in group]}
+st.navigation(pages, position=u["nav"]).run()
