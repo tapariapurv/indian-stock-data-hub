@@ -341,6 +341,12 @@ Both take `--live` to run against the provider you have configured instead, whic
 | Stale numbers | Results are cached for an hour: **Settings → Advanced → Storage & backups → Clear cached results**. |
 | Anything else | Turn on **Show more details** in Settings → Layout & look to see the full error. |
 
+## The hosted website
+
+This branch also holds a hosted version in `web/`, on [Vercel](https://indian-stock-data-hub.vercel.app). The local app is unaffected: `streamlit run app.py` works the same on every branch.
+
+Vercel deploys the `web-version` branch automatically on each push, and ignores every other branch. It builds from `web/` and copies the shared modules in; `web/vercel.json` lists them, and `tests/test_web.py` fails if one is missing.
+
 ## Disclaimer
 
 This project is for **personal research and education**. It is **not investment advice**: AI verdicts come from a language model reading scraped data and can be wrong, and the guidance grades are a prompt to go and read the transcript yourself, not a verdict. Always verify against the original filings.
@@ -354,9 +360,3 @@ Issues and pull requests are welcome. Before opening a PR, run the four test scr
 ## License
 
 [MIT](LICENSE) © 2026 Purv Taparia
-
-## The hosted website
-
-This branch also holds a hosted version in `web/`, on [Vercel](https://indian-stock-data-hub.vercel.app). The local app is unaffected: `streamlit run app.py` works the same on every branch.
-
-Vercel deploys the `web-version` branch automatically on each push, and ignores every other branch. It builds from `web/` and copies the shared modules in; `web/vercel.json` lists them, and `tests/test_web.py` fails if one is missing.
