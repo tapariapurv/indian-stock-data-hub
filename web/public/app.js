@@ -1,7 +1,7 @@
 // The web replica: same pages and look as the local app, per-user data in Firestore.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, query, setDoc, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs as getDocsLive, getFirestore, query, setDoc, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // Public by design: access is enforced by the Firestore rules, not by hiding this.
 const fb = initializeApp({
@@ -14,9 +14,20 @@ const auth = getAuth(fb), db = getFirestore(fb);
 let user = null;
 
 // --- small helpers ---------------------------------------------------------
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fadeIn = el => { if (!calm()) el.animate?.([{opacity: 0}, {opacity: 1}], {duration: 160, easing: "ease-out"}); };
+// A button whose action takes time shows it's working, can't run twice, and says so if it fails.
+const guarded = (btn, action) => ev => {
+  if (btn.classList.contains("busy")) return;
+  let run;
+  try { run = action(ev); } catch (err) { toast(plainError(err), true); return; }
+  if (!run?.then) return;
+  btn.classList.add("busy"); btn.disabled = true;
+  run.catch(err => toast(plainError(err), true)).finally(() => { btn.classList.remove("busy"); btn.disabled = false; });
+};
 const h = (tag, props = {}, ...kids) => {
   const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) k === "class" ? (e.className = v) : (e[k] = v);
+  for (const [k, v] of Object.entries(props)) k === "class" ? (e.className = v) : k === "onclick" && tag === "button" ? (e.onclick = guarded(e, v)) : (e[k] = v);
   e.append(...kids.flat().filter(k => k !== null && k !== undefined && k !== false));
   return e;
 };
@@ -25,22 +36,49 @@ const shell = document.getElementById("page");
 const freshPage = () => { const el = document.createElement("div"); shell.replaceChildren(el); return el; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 // Reads are safe to repeat, so a dropped connection or a busy server gets two more tries.
-const api = async p => {
+const fetchApi = async p => {
   for (let tries = 0; ; tries++) {
     let r;
-    try { r = await fetch("/api/" + p); } catch (e) { if (tries < 2) { await wait(500 * (tries + 1)); continue; } throw e; }
+    try { r = await fetch("/api/" + p, {signal: AbortSignal.timeout(30000)}); } catch (e) { if (tries < 2) { await wait(500 * (tries + 1)); continue; } throw e; }
     if ((r.status >= 500 || r.status === 429) && tries < 2) { await wait(500 * (tries + 1)); continue; }
     let b; try { b = await r.json(); } catch { throw new Error("The server sent back something unexpected. Try again in a minute."); }
     if (!r.ok) throw new Error(b.error || "That didn't work. Try again in a minute.");
     return b;
   }
 };
-const plainError = e => /failed to fetch|networkerror|load failed|offline|unavailable/i.test(e.message) ? "Couldn't reach the server. Check your connection and try again." : e.message;
+// The same read within a minute shares one answer: faster pages, and fewer chances to fail.
+const answers = new Map();
+const api = p => {
+  const hit = answers.get(p);
+  if (hit && Date.now() - hit.at < 6e4) return hit.value.then(structuredClone);
+  if (answers.size > 200) answers.clear();
+  const value = fetchApi(p);
+  answers.set(p, {at: Date.now(), value});
+  value.catch(() => answers.delete(p));
+  return value.then(structuredClone);
+};
+const plainError = e => /failed to fetch|networkerror|load failed|offline|unavailable|timed out|aborted/i.test(e?.message) ? "Couldn't reach the server. Check your connection and try again." : e?.message || "That didn't work. Try again in a minute.";
 const failed = e => h("p", {class: "err", textContent: plainError(e)});
-function toast(text) {
+let toastTimer;
+function toast(text, bad = false) {
   const t = document.getElementById("toast");
-  t.textContent = text; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 3000);
+  t.textContent = text; t.classList.add("show"); t.classList.toggle("bad", bad);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), bad ? 6000 : 3000);
+}
+// Numbers settle into place, and glide when they've changed since the last look.
+const lastShown = new Map();
+function settle(el, text, key) {
+  const m = /^(\D*)([\d,]+(?:\.\d+)?)(.*)$/.exec(text), to = m ? Number(m[2].replace(/,/g, "")) : NaN, from = lastShown.get(key);
+  if (!Number.isFinite(to)) return;
+  lastShown.set(key, to);
+  if (from === to || calm()) return;
+  const start = from ?? to * .92, places = (m[2].split(".")[1] || "").length, began = performance.now();
+  const step = now => {
+    const t = Math.min((now - began) / 500, 1), eased = 1 - (1 - t) ** 3;
+    el.textContent = t < 1 ? m[1] + (start + (to - start) * eased).toLocaleString("en-IN", {minimumFractionDigits: places, maximumFractionDigits: places}) + m[3] : text;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 function inr(x, signed = false, decimals = 0) {
   const s = Math.abs(x).toLocaleString("en-IN", {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
@@ -48,10 +86,13 @@ function inr(x, signed = false, decimals = 0) {
 }
 const tone = x => (x > 0 ? "up" : x < 0 ? "down" : "flat");
 const delta = (text, x) => h("span", {class: "delta " + tone(x)}, x > 0 ? icon("arrow_upward") : x < 0 ? icon("arrow_downward") : null, text);
-const metric = (label, value, sub, plain) => h("div", {class: "metric" + (plain ? " plain" : "")}, h("small", {textContent: label}), h("b", {textContent: value}), sub);
+const metric = (label, value, sub, plain) => { const b = h("b", {textContent: value}); if (!plain) settle(b, value, `${location.hash}|${label}`); return h("div", {class: "metric" + (plain ? " plain" : "")}, h("small", {textContent: label}), b, sub); };
 
 // --- per-user data ---------------------------------------------------------
 const mine = name => collection(db, "users", user.uid, name);
+// Without a connection Firestore answers from memory, which can look like "you have no data".
+// That must never reach a page, or it shows Get started and can overwrite what's really saved.
+const getDocs = async q => { const snap = await getDocsLive(q); if (snap.metadata?.fromCache) throw new Error("You're offline."); return snap; };
 const holdings = async () => (await getDocs(mine("holdings"))).docs.map(d => ({account: "main", ...d.data(), _id: d.id}));
 const alertRules = async t => (await getDocs(mine("alerts"))).docs.map(d => ({id: d.id, ...d.data()})).filter(r => r.ticker === t);
 
@@ -144,7 +185,7 @@ async function home() {
   money.append(metric("Your stocks", String(rows.length), delta(`${up} up today`, 0)));
   const order = rows.map((r, i) => [r, quotes[i]]).sort((a, b) => a[0].name.localeCompare(b[0].name));
   body.replaceWith(money, notes.length ? h("div", {class: "card attention"}, h("div", {class: "row"}, h("h4", {class: "grow"}, icon("notifications"), " Needs your attention"), h("span", {class: "badge orange", textContent: `${notes.length} new`}), h("a", {href: "#/portfolio", onclick: () => { pfSection = "Alerts"; }}, "See all ", icon("arrow_forward"))), h("div", {class: "unread-only"}, notes.map(eventRow))) : "", h("p", {}, h("b", {textContent: "Your stocks"}), h("span", {class: "muted", textContent: " · click a stock to open it"})),
-    h("div", {class: "scroll"}, h("table", {},
+    h("div", {class: "scroll stocks"}, h("table", {},
       h("thead", {}, h("tr", {}, ["Company", "Symbol", "Price", "Today", "Last month", "AI view"].map(t => h("th", {textContent: t})))),
       h("tbody", {}, order.map(([r, q]) => h("tr", {class: "click", tabIndex: 0, onclick: () => openCompany(r), onkeydown: e => { if (e.key === "Enter") openCompany(r); }},
         h("td", {textContent: r.name}), h("td", {textContent: r.ticker}),
@@ -299,8 +340,15 @@ let prefs = {...PREFS}, META = null;
 const keyOf = p => { try { return localStorage.getItem("aikey:" + p) || ""; } catch { return ""; } };
 const aiBody = () => ({provider: prefs.provider, model: prefs.model, base_url: prefs.base_url, api_key: keyOf(prefs.provider)});
 const aiReady = () => Boolean(prefs.provider && prefs.model);
+const REPEATABLE = new Set(["search-reports", "diff", "models", "screen", "trades", "upload", "export"]);  // not analyses: they cost AI tokens
 async function call(route, body) {
-  const r = await fetch("/api/" + route, {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + await user.getIdToken()}, body: JSON.stringify(body)});
+  let r;
+  for (let tries = 0; ; tries++) {
+    try { r = await fetch("/api/" + route, {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + await user.getIdToken(tries > 0)}, body: JSON.stringify(body)}); }
+    catch (e) { if (REPEATABLE.has(route) && tries < 1) { await wait(800); continue; } throw e; }
+    if (tries < 1 && (r.status === 401 || (REPEATABLE.has(route) && [502, 503, 504].includes(r.status)))) { await wait(300); continue; }
+    break;
+  }
   let b; try { b = await r.json(); } catch { throw new Error("That took too long or stopped early. Try again, or read fewer reports."); }
   if (!r.ok) throw new Error(b.error);
   return b;
@@ -362,7 +410,12 @@ function eventRow(e) {
   const row = h("div", {class: "event" + (e.read ? "" : " new")}, h("span", {class: "event-ic"}, icon(EVENT_ICON[e.kind] || "notifications")),
     h("div", {class: "event-text"}, h("div", {}, h("b", {textContent: e.ticker || "Update"}), h("span", {class: "muted", textContent: "  ·  " + sinceText(e.ts)})), h("div", {textContent: String(e.title || "").replace(`${e.ticker}: `, "").replace(/^./, c => c.toUpperCase())}), e.body ? h("div", {class: "muted", textContent: e.body}) : null),
     h("div", {class: "event-actions"}, e.ticker ? h("button", {class: "btn link", onclick: () => openCompany({ticker: e.ticker, name: e.ticker})}, icon("arrow_forward"), "Open") : null,
-      e.read ? null : h("button", {class: "btn link", ariaLabel: "Mark as read", title: "Mark as read", onclick: async ev => { const box = row.parentNode; await markRead(e); e.read = true; row.classList.remove("new"); ev.target.closest("button").remove(); if (box?.classList.contains("unread-only")) { row.remove(); if (!box.querySelector(".event")) box.closest(".card").remove(); } }}, icon("check"))));
+      e.read ? null : h("button", {class: "btn link", ariaLabel: "Mark as read", title: "Mark as read", onclick: async ev => { const box = row.parentNode; await markRead(e); e.read = true; row.classList.remove("new"); ev.target.closest("button").remove(); if (box?.classList.contains("unread-only")) {
+        const card = box.closest(".card"), left = box.querySelectorAll(".event").length - 1;
+        if (!calm()) await Promise.race([row.animate([{opacity: 1, height: row.offsetHeight + "px"}, {opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0, overflow: "hidden"}], {duration: 200, easing: "cubic-bezier(.23,1,.32,1)"}).finished, wait(260)]);  // animations pause in a background tab
+        row.remove();
+        if (!left) card.remove(); else card.querySelector(".badge").textContent = `${left} new`;
+      } }}, icon("check"))));
   return row;
 }
 function download(bytes, name, type) {
@@ -387,7 +440,7 @@ async function unpack(packed) {
 }
 function tabs(entries) {
   const body = h("div"), bar = h("div", {class: "tabs", role: "tablist"});
-  const open = (i, btn) => { bar.querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === btn); b.ariaSelected = String(b === btn); }); body.replaceChildren(); (async () => entries[i][2](body))().catch(e => body.replaceChildren(failed(e))); };
+  const open = (i, btn) => { bar.querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === btn); b.ariaSelected = String(b === btn); }); body.replaceChildren(); fadeIn(body); (async () => entries[i][2](body))().catch(e => body.replaceChildren(failed(e))); };
   entries.forEach(([label, ic], i) => bar.append(h("button", {role: "tab", onclick: e => open(i, e.currentTarget)}, icon(ic), label)));
   queueMicrotask(() => open(0, bar.firstChild));
   return h("div", {}, bar, body);
@@ -539,8 +592,8 @@ function donut(items) {
   let start = 0;
   [...items].sort((a, b) => b[1] - a[1]).forEach(([t, v], i) => {
     const part = v / total, ring = document.createElementNS(NS, "circle"), tip = document.createElementNS(NS, "title");
-    Object.entries({cx: 100, cy: 100, r: R, fill: "none", stroke: PIE[i % PIE.length], "stroke-width": 44, "stroke-dasharray": `${part * C} ${C}`, "stroke-dashoffset": -start * C, transform: "rotate(-90 100 100)"}).forEach(([k, x]) => ring.setAttribute(k, x));
-    tip.textContent = `${t} ${(part * 100).toFixed(1)}%`; ring.append(tip); svg.append(ring);
+    Object.entries({cx: 100, cy: 100, r: R, fill: "none", stroke: PIE[i % PIE.length], "stroke-width": 44, "stroke-dasharray": calm() ? `${part * C} ${C}` : `0 ${C}`, "stroke-dashoffset": -start * C, transform: "rotate(-90 100 100)"}).forEach(([k, x]) => ring.setAttribute(k, x));
+    tip.textContent = `${t} ${(part * 100).toFixed(1)}%`; ring.append(tip); svg.append(ring); setTimeout(() => ring.setAttribute("stroke-dasharray", `${part * C} ${C}`), 30);
     if (part >= .07) {
       const angle = (start + part / 2) * 2 * Math.PI - Math.PI / 2, label = document.createElementNS(NS, "text"), x = 100 + R * Math.cos(angle), y = 100 + R * Math.sin(angle);
       Object.entries({x, y: y - 2, fill: "#fff", "font-size": t.length > 6 ? 8 : 10, "text-anchor": "middle", transform: `rotate(${(deg => deg > 90 && deg < 270 ? deg - 180 : deg)(angle * 180 / Math.PI + 90)} ${x} ${y})`}).forEach(([k, n]) => label.setAttribute(k, n));
@@ -606,7 +659,7 @@ async function portfolioPage() {
   const SECTIONS = {Holdings: "view_module", Performance: "show_chart", ...(prefs.positions ? {Trades: "receipt_long"} : {}), Spread: "donut_large", Alerts: "notifications", "Weekly summary": "newspaper"};
   if (!SECTIONS[pfSection]) pfSection = "Holdings";
   const WORDS = {Holdings: "My stocks", Performance: "How it's doing", Trades: "Buys & sells", Spread: "Spread", Alerts: "Alerts", "Weekly summary": "Weekly summary"};
-  const bar = h("div", {class: "seg sections"}, Object.entries(SECTIONS).map(([k, i]) => h("button", {class: k === pfSection ? "on" : "", onclick: () => { pfSection = k; route(); }}, icon(i), k === "Alerts" && unread ? `Alerts · ${unread}` : WORDS[k])));
+  const bar = h("div", {class: "seg sections"}, Object.entries(SECTIONS).map(([k, i]) => h("button", {class: k === pfSection ? "on" : "", onclick: e => { pfSection = k; bar.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === e.currentTarget)); return drawSection(); }}, icon(i), k === "Alerts" && unread ? `Alerts · ${unread}` : WORDS[k])));
   const edit = r => popover("Edit", "edit", pop => { const qty = h("input", {type: "number", min: 0, value: r.qty || ""}), avg = h("input", {type: "number", min: 0, value: r.avg_price || ""}), acc = into(); acc.value = r.account; pop.replaceChildren(prefs.positions ? h("label", {}, "Shares", qty) : "", prefs.positions ? h("label", {}, "Average price paid (₹)", avg) : "", h("label", {}, "Account", acc), h("div", {class: "row"}, h("button", {class: "btn primary", textContent: "Save", onclick: async () => { await deleteDoc(doc(mine("holdings"), r._id)); await saveHolding(acc.value, r, Number(qty.value), Number(avg.value)); toast("Saved."); route(); }}), h("button", {class: "btn", textContent: "Remove", onclick: async () => { await deleteDoc(doc(mine("holdings"), r._id)); toast(`Removed ${r.ticker}.`); route(); }}))); });
   const recheck = h("button", {class: "btn", onclick: async () => { recheck.disabled = true; for (const [i, t] of tick.entries()) { recheck.lastChild.textContent = `Checking ${t} (${i + 1}/${tick.length})…`; await lookInto(t, "Re-checked from Portfolio").catch(e => toast(`${t}: ${e.message}`)); } route(); }}, icon("autorenew"), h("span", {textContent: "Check them all again"}));
   const SECTION_DRAW = {
@@ -624,7 +677,7 @@ async function portfolioPage() {
           h("div", {class: "metric plain"}, h("b", {textContent: q ? inr(q.price, false, 2) : "—"}), q ? delta(`${q.change >= 0 ? "+" : ""}${q.change.toFixed(2)} (${q.pct >= 0 ? "+" : ""}${q.pct.toFixed(2)}%)`, q.change) : null), q ? spark(q.spark) : null,
           prefs.positions && r.qty ? h("div", {class: "trio"}, h("div", {}, h("span", {class: "muted", textContent: "Shares"}), h("b", {textContent: r.qty.toLocaleString("en-IN")})), h("div", {}, h("span", {class: "muted", textContent: "Value"}), h("b", {textContent: val ? inr(val) : "—"})), h("div", {}, h("span", {class: "muted", textContent: "Gain/loss"}), h("b", {class: gain === null ? "" : tone(gain), textContent: gain === null ? "—" : inr(gain, true)}), gain === null ? null : h("span", {class: tone(gain), textContent: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`}))) : null,
           h("div", {class: "row foot"}, h("span", {class: "muted grow", textContent: ago(r)}), edit(r), h("button", {class: "btn link", onclick: () => openCompany(r)}, icon("arrow_forward"), "Open"))); };
-      const table = () => h("div", {class: "scroll", style: `max-height:${prefs.table_height + 200}px`}, h("table", {}, h("thead", {}, h("tr", {}, ["Company", "Symbol", "Account", ...(prefs.positions ? ["Shares", "Paid"] : []), "Price", "Today", ...(prefs.positions ? ["Value", "Gain or loss"] : []), "AI view", "Checked", ""].map(t => h("th", {textContent: t})))),
+      const table = () => h("div", {class: "scroll stocks", style: `max-height:${prefs.table_height + 200}px`}, h("table", {}, h("thead", {}, h("tr", {}, ["Company", "Symbol", "Account", ...(prefs.positions ? ["Shares", "Paid"] : []), "Price", "Today", ...(prefs.positions ? ["Value", "Gain or loss"] : []), "AI view", "Checked", ""].map(t => h("th", {textContent: t})))),
         h("tbody", {}, sorted().map(r => { const {q, val, gain} = facts(r), verdict = latest[r.ticker]?.verdict;
           return h("tr", {}, h("td", {}, h("a", {href: "#", textContent: r.name, onclick: e => { e.preventDefault(); openCompany(r); }})), h("td", {textContent: r.ticker}), h("td", {textContent: names[r.account] || "—"}), ...(prefs.positions ? [h("td", {class: "num", textContent: r.qty || "—"}), h("td", {class: "num", textContent: r.avg_price ? inr(r.avg_price, false, 2) : "—"})] : []), h("td", {class: "num", textContent: q ? inr(q.price, false, 2) : "—"}), h("td", {class: "num " + (q ? tone(q.pct) : ""), textContent: q ? `${q.pct >= 0 ? "+" : ""}${q.pct.toFixed(2)}%` : "—"}), ...(prefs.positions ? [h("td", {class: "num", textContent: val ? inr(val) : "—"}), h("td", {class: "num " + (gain ? tone(gain) : ""), textContent: gain ? inr(gain, true) : "—"})] : []), h("td", {class: {Positive: "up", Cautious: "down"}[verdict] || "", textContent: VIEW[verdict]?.[0] || "—"}), h("td", {class: "muted", textContent: ago(r)}), h("td", {}, edit(r))); }))));
       const draw = () => el.replaceChildren(h("div", {class: "row"}, h("h4", {}, icon("view_module"), " My stocks"), pick([["Cards", "Cards", "grid_view"], ["Table", "Table", "table_rows"]], pfLayout, k => { pfLayout = k; }), pick(Object.entries(SORTS), pfSort, k => { pfSort = k; }), h("span", {class: "grow"}), recheck),
@@ -686,7 +739,9 @@ async function portfolioPage() {
     },
   };
   skel.replaceWith(header, bar, sectionBox);
-  try { await SECTION_DRAW[pfSection](sectionBox); } catch (e) { sectionBox.replaceChildren(failed(e)); }
+  // Each section draws into its own box, so a slow one can't land on top of the next.
+  const drawSection = async () => { const box = h("div"); sectionBox.replaceChildren(box); fadeIn(box); try { await SECTION_DRAW[pfSection](box); } catch (e) { box.replaceChildren(failed(e)); } };
+  await drawSection();
 }
 
 // --- Ask AI --------------------------------------------------------------------
@@ -706,7 +761,7 @@ async function askPage() {
     if (!aiReady()) return toast("Choose an AI in Settings first.");
     if (await overBudget()) return toast("You've reached the monthly AI limit you set in Settings.");
     box.value = ""; const history = messages.slice(), isNew = !chatId; messages = [...messages, {role: "user", text: question}]; draw();
-    const [row, bubble] = turn("assistant", reports.checked ? "Reading…" : "Thinking…"); log.append(row);
+    const [row, bubble] = turn("assistant", reports.checked ? "Reading…" : "Thinking…"); bubble.classList.add("thinking"); log.append(row); row.scrollIntoView({block: "nearest", behavior: calm() ? "auto" : "smooth"});
     try {
       const latest = await latestAll(), upper = question.toUpperCase(), wordsIn = t => new RegExp(`\\b${t.replace(/[^A-Z0-9]/g, "")}\\b`).test(upper), found = Object.keys(latest).filter(t => wordsIn(t) || upper.includes((latest[t].name || "").toUpperCase())), named = scope.size ? [...scope] : found;
       const details = await Promise.all((named.length ? named : Object.keys(latest)).filter(t => latest[t]).slice(0, 5).map(async t => { const s = await snapOf(latest[t].runId); return s ? `${t} (${s.company_name}). View: ${s.ai_verdict}. ${s.ai_summary || ""} Numbers: ${JSON.stringify(s.metrics)}. Strengths: ${(s.pros || []).join("; ")}. Weaknesses: ${(s.cons || []).join("; ")}.` : ""; }));
@@ -714,7 +769,7 @@ async function askPage() {
       const r = await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json", Authorization: "Bearer " + await user.getIdToken()}, body: JSON.stringify({question, history, ai: aiBody(), data: dataBody(), filings: reports.checked ? named.slice(0, 2) : [], context: `Holdings: ${hold || "none"}\n${details.join("\n")}`})});
       if (!r.ok) { let m = "That didn't work. Try again in a minute."; try { m = (await r.json()).error; } catch { /* not JSON */ } throw new Error(m); }
       let text = ""; const reader = r.body.getReader(), dec = new TextDecoder();
-      for (;;) { const {done, value} = await reader.read(); if (done) break; text += dec.decode(value, {stream: true}); bubble.textContent = text; }
+      for (;;) { const {done, value} = await reader.read(); if (done) break; text += dec.decode(value, {stream: true}); bubble.classList.remove("thinking"); bubble.textContent = text; }
       messages = [...messages, {role: "assistant", text}].slice(-40);
       await addUsage(Math.ceil((question.length + text.length) / 4));
       const payload = {title: (messages[0].text || "Chat").slice(0, 60), updated: Date.now(), messages};
@@ -921,14 +976,15 @@ let routeId = 0;
 async function route() {
   const [, name = slug(prefs.home || "Home"), arg] = location.hash.split("/"), id = ++routeId;
   document.body.classList.toggle("side", name === "ask-ai"); document.body.classList.toggle("sidenav", prefs.nav === "side");
-  drawNav(name);
+  drawNav(name); document.body.classList.add("loading");
+  const done = () => { if (id === routeId) document.body.classList.remove("loading"); };
   const open = () => name === "home" ? home() : name === "stock" ? stock(arg ? decodeURIComponent(arg).toUpperCase() : null) : name === "research" ? research() : name === "portfolio" ? portfolioPage() : name === "ask-ai" ? askPage() : name === "screener" ? screenerPage() : name === "compare" ? comparePage() : name === "archive" ? archivePage() : name === "history" ? historyPage(arg) : name === "settings" ? settingsPage() : home();
   for (let tries = 0; ; tries++) {
-    try { await open(); return; } catch (e) {
+    try { await open(); done(); return; } catch (e) {
       if (id !== routeId) return;  // they've moved on to another page
       if (tries < 1) { await wait(800); if (id !== routeId) return; continue; }
-      shell.replaceChildren(h("div", {class: "card problem"}, icon("cloud_off"), h("div", {}, h("b", {textContent: "This page didn't load"}), h("p", {class: "muted", textContent: plainError(e)}), h("button", {class: "btn", onclick: route}, icon("refresh"), "Try again"))));
-      return;
+      shell.replaceChildren(h("div", {class: "card problem"}, icon("cloud_off"), h("div", {}, h("b", {textContent: "This page didn't load"}), h("p", {class: "muted", textContent: plainError(e)}), h("button", {class: "btn", onclick: () => route()}, icon("refresh"), "Try again"))));
+      done(); return;
     }
   }
 }
@@ -954,4 +1010,7 @@ async function autoRefresh() {
   } finally { refreshing = false; }
 }
 window.addEventListener("hashchange", () => { if (user) route(); });
+window.addEventListener("unhandledrejection", ev => toast(plainError(ev.reason), true));
+window.addEventListener("offline", () => toast("You're offline. Anything you save goes through when you reconnect.", true));
+window.addEventListener("online", () => { toast("Back online."); if (user && shell.querySelector(".problem")) route(); });
 onAuthStateChanged(auth, async u => { user = u; if (!u) return signInPage(); await loadPrefs().catch(() => wait(800).then(loadPrefs)).catch(() => {}); route(); autoRefresh(); });

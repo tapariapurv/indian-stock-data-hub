@@ -56,7 +56,6 @@ svg.spark{display:block;width:150px;height:26px}
 #toast{position:fixed;bottom:24px;right:24px;background:var(--fg);color:#fff;border-radius:8px;padding:10px 14px;opacity:0;pointer-events:none;transition:opacity 200ms var(--ease)}
 #toast.show{opacity:1}
 @media (max-width:720px){main{padding:16px}h1{font-size:28px}}
-@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
 
 .tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:16px 0 12px}
 .tabs button{all:unset;cursor:pointer;display:inline-flex;gap:6px;align-items:center;padding:8px 10px;color:var(--muted);border-bottom:2px solid transparent}
@@ -104,3 +103,46 @@ td.chart{width:32%;padding:2px 0}td.chart svg.spark{width:100%;height:34px;min-w
 .event-text{flex:1;min-width:0}.event-text .badge{margin-top:4px}.event-actions{display:flex;align-items:center;gap:2px;flex:none}.event-actions .btn{padding:4px 6px}
 .attention a{white-space:nowrap}.attention a .ms{font-size:16px;vertical-align:-3px}.card>.row h4 .ms{vertical-align:-4px}.event:last-child{padding-bottom:0}
 .problem{display:flex;gap:12px;align-items:flex-start;max-width:520px;margin-top:40px}.problem>.ms{color:var(--muted);font-size:22px}.problem p{margin:4px 0 12px}
+
+/* --- Motion. Short and calm: this is a tool for money, so nothing celebrates. ---------------- */
+:root{--ease-in-out:cubic-bezier(.77,0,.175,1)}
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+@keyframes pop{from{opacity:0;transform:scale(.97)}}
+@keyframes reveal{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes shimmer{to{background-position:-200% 0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes breathe{50%{opacity:.45}}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250vw)}}
+@keyframes ring{20%{transform:rotate(14deg)}45%{transform:rotate(-10deg)}70%{transform:rotate(6deg)}}
+/* Loading: a shimmer the shape of what's coming, and a thin bar along the top */
+.skel{height:150px;border-radius:10px;overflow:hidden;color:transparent;user-select:none;background:linear-gradient(90deg,var(--bg2) 25%,#F8F7F3 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+#progress{position:fixed;top:0;left:0;right:0;height:2px;overflow:hidden;z-index:30;opacity:0;pointer-events:none;transition:opacity 150ms ease}
+#progress::after{content:"";display:block;width:40%;height:100%;background:var(--accent);animation:sweep 1.2s var(--ease-in-out) infinite}
+body.loading #progress{opacity:1;transition-delay:200ms}
+/* Arriving: the page fades, then its cards rise one after another */
+#page>div{animation:fade 160ms ease-out backwards}
+.card,.problem,.signin{animation:rise 240ms var(--ease) backwards}
+.metric:not(.plain),.hcard,.event{animation:rise 240ms var(--ease) backwards}
+.metric:nth-child(2),.hcard:nth-child(2),.event:nth-child(2){animation-delay:40ms}.metric:nth-child(3),.hcard:nth-child(3),.event:nth-child(3){animation-delay:80ms}.metric:nth-child(4),.hcard:nth-child(4),.event:nth-child(4){animation-delay:120ms}.hcard:nth-child(n+5),.event:nth-child(n+5){animation-delay:160ms}
+.stocks tbody tr:nth-child(-n+12){animation:fade 240ms ease-out backwards}.stocks tbody tr:nth-child(2){animation-delay:30ms}.stocks tbody tr:nth-child(3){animation-delay:60ms}.stocks tbody tr:nth-child(4){animation-delay:90ms}.stocks tbody tr:nth-child(n+5):nth-child(-n+12){animation-delay:120ms}
+.metric b{font-variant-numeric:tabular-nums}
+/* Charts draw themselves left to right */
+svg.spark{animation:reveal 600ms var(--ease) backwards}
+.donut circle{transition:stroke-dasharray 650ms var(--ease)}.donut text{animation:fade 250ms 400ms ease-out backwards}.bar i{animation:fade 300ms ease-out backwards}
+/* Feedback: presses, hovers, and buttons that are working */
+nav a,.menu-btn,.seg button,.pills button,.tabs button,.chat,.send,.hits button{transition:background-color 120ms ease,color 120ms ease,border-color 120ms ease,transform 120ms var(--ease)}
+nav a:active,.menu-btn:active,.seg button:active,.pills button:active,.tabs button:active,.chat:active,.send:active{transform:scale(.97)}
+input,select,textarea{transition:border-color 120ms ease,box-shadow 120ms ease}input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,78,121,.12);outline:0}input.switch:focus{box-shadow:none}.chatbar input:focus,.multi input:focus{box-shadow:none}.chatbar:focus-within,.multi:focus-within{box-shadow:0 0 0 3px rgba(31,78,121,.12)}.chatbar,.multi{transition:border-color 120ms ease,box-shadow 120ms ease}
+tbody tr{transition:background-color 120ms ease}.hcard{transition:transform 160ms var(--ease),box-shadow 160ms var(--ease),border-color 160ms ease}button.btn{transition:transform 120ms var(--ease),background-color 120ms ease,border-color 120ms ease,filter 120ms ease}
+@media (hover:hover) and (pointer:fine){nav a:not(.on):hover,.menu-btn:hover{background:var(--bg2)}.seg button:not(.on):hover,.tabs button:not(.on):hover{background:var(--bg2);color:var(--fg)}.pills button:not(.on):hover{border-color:var(--accent)}button.btn:not(.primary):not(.link):not(:disabled):hover{border-color:#CFCBC2;background:#F6F5F0}button.primary:not(:disabled):hover{filter:brightness(1.12)}.hcard:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(28,31,38,.07);border-color:#D6D3CC}}
+button.btn:disabled{transition:opacity 100ms ease 150ms}.btn.busy::after{content:"";width:12px;height:12px;flex:none;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin 700ms linear infinite,fade 100ms 150ms backwards}
+/* Things that open: from the button that opened them */
+.pop:not([hidden]){transform-origin:top left;animation:pop 160ms var(--ease)}.pop.right:not([hidden]){transform-origin:top right}.hits:not([hidden]){transform-origin:top center;animation:pop 140ms var(--ease)}
+details summary{position:relative;padding-right:24px}details summary::after{content:"expand_more";font-family:"Material Symbols Rounded";font-size:20px;line-height:1;position:absolute;right:0;top:50%;margin-top:-10px;color:var(--muted);transition:transform 200ms var(--ease)}details[open]>summary::after{transform:rotate(180deg)}details[open]>*:not(summary){animation:rise 200ms var(--ease) backwards}
+.tabs button{position:relative}.tabs button.on{border-color:transparent}.tabs button::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;background:var(--accent);transform:scaleX(0);transition:transform 200ms var(--ease)}.tabs button.on::after{transform:scaleX(1)}
+/* Messages: a new alert gets one small ring, the AI breathes while it reads */
+.attention h4 .ms{display:inline-block;transform-origin:50% 10%;animation:ring 700ms ease-in-out 350ms}
+.msg:last-child{animation:rise 200ms var(--ease) backwards}.thinking{animation:breathe 1.4s ease-in-out infinite}.welcome{animation:rise 300ms var(--ease) backwards}
+#toast{transform:translateY(8px);transition:opacity 200ms var(--ease),transform 200ms var(--ease);max-width:min(420px,calc(100vw - 48px));z-index:40}#toast.show{transform:none}#toast.bad{background:#7E2A23}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0s!important;scroll-behavior:auto!important}.hcard:hover{transform:none}}

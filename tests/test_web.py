@@ -1,6 +1,7 @@
 """The web API: routing, input checks and failures, with no network.
 Run:  .venv/bin/python tests/test_web.py"""
 import importlib.util
+import io
 import os
 import tempfile
 from pathlib import Path
@@ -183,6 +184,42 @@ def test_page_furniture_is_served_from_this_site():
     for local in re.findall(r'(?:href|src)="/([^"]+)"', html):
         assert (public / local).is_file(), local
     assert 'rel="icon"' in html and "jsdelivr" not in html
+
+
+def test_data_sources_get_more_tries():
+    retry = api.core.SESSION.get_adapter("https://www.screener.in").max_retries
+    assert retry.total == 2 and 503 in retry.status_forcelist and retry.allowed_methods == ("GET",)
+
+
+def test_failures_name_the_error_in_the_logs_and_nothing_else():
+    import contextlib
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), mock.patch.object(api.portfolio, "search", side_effect=RuntimeError("secret detail")):
+        assert api.respond("/api/search", "q=acme")[0] == 502
+    assert "RuntimeError" in out.getvalue() and "secret" not in out.getvalue()
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), mock.patch.object(api, "verify_user", side_effect=RuntimeError("secret key")):
+        assert api.respond_post("analyze", "x", b"{}")[0] == 502
+    assert "RuntimeError" in out.getvalue() and "secret" not in out.getvalue()
+
+
+def test_the_deployed_bundle_works_without_the_repo_or_streamlit():
+    """Exactly what Vercel ships. This is what would have caught runtime.py going missing."""
+    import json, re, shutil, subprocess, sys
+    root = path.parents[2]
+    listed = re.search(r"for m in (.+?);", json.loads((root / "web/vercel.json").read_text())["buildCommand"]).group(1).split()
+    with tempfile.TemporaryDirectory() as tmp:
+        site = Path(tmp).resolve() / "site"
+        (site / "api").mkdir(parents=True)
+        shutil.copy(path, site / "api/index.py")
+        for m in listed:
+            shutil.copy(root / f"{m}.py", site)
+        code = ("import sys, importlib.util as u; sys.modules['streamlit'] = None\n"
+                f"s = u.spec_from_file_location('web_api', {str(site / 'api/index.py')!r}); a = u.module_from_spec(s); s.loader.exec_module(a)\n"
+                f"assert a.core.__file__.startswith({str(site)!r}), a.core.__file__\n"
+                "a.core._wait_for_memory()\nprint('bundle ok')")
+        run = subprocess.run([sys.executable, "-c", code], cwd=tmp, capture_output=True, text=True, timeout=120, env={**os.environ, "STOCK_HUB_DATA": tmp})
+        assert "bundle ok" in run.stdout, run.stderr[-600:]
 
 
 def test_nan_becomes_null():

@@ -44,6 +44,9 @@ if find_spec("streamlit") is None:
 import pandas as pd  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
 
+from requests.adapters import HTTPAdapter  # noqa: E402
+from urllib3.util.retry import Retry  # noqa: E402
+
 import alerts  # noqa: E402
 import archive  # noqa: E402
 import core  # noqa: E402
@@ -570,6 +573,11 @@ def providers(q: dict) -> list[dict]:
     return [{"id": pid, "label": v[0], "base_url": v[2], "needs_key": v[3]} for pid, v in cfg.PROVIDERS.items()]
 
 
+# A busy or blinking data source gets two more tries before anyone sees an error.
+core.SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=16, max_retries=Retry(
+    total=2, backoff_factor=0.4, status_forcelist=(429, 502, 503, 504), allowed_methods=("GET",), raise_on_status=False)))
+
+
 def meta(q: dict) -> dict:
     return {"categories": core.WANTED_CATEGORIES, "words": core.CATEGORY_WORDS, "timeframes": list(core.TIMEFRAME_OPTIONS),
             "statements": core.STATEMENT_TABLES, "presets": screener.PRESETS,
@@ -674,7 +682,8 @@ def respond(path: str, query: str) -> tuple[int, dict | list, int]:
         body = route[0](parse_qs(query))
     except BadRequest as exc:
         return 400, {"error": str(exc)}, 0
-    except Exception:
+    except Exception as exc:
+        print(f"GET {path} failed: {type(exc).__name__}", flush=True)  # the name only: never anyone's data
         return 502, {"error": "The data source did not answer. Try again shortly."}, 0
     if body is None:
         return 404, {"error": "Nothing found."}, 0
@@ -695,7 +704,8 @@ def respond_post(route: str, authorization: str, raw: bytes) -> tuple[int, dict]
         return 401, {"error": "Please sign in again."}
     except (BadRequest, json.JSONDecodeError) as exc:
         return 400, {"error": str(exc)}
-    except Exception:
+    except Exception as exc:
+        print(f"POST {route} failed: {type(exc).__name__}", flush=True)  # the name only: never a key or anyone's data
         return 502, {"error": "That didn't work. Try again in a minute."}
 
 
@@ -757,6 +767,6 @@ class handler(BaseHTTPRequestHandler):
         status, body, ttl = respond(parse_qs(url.query).get("route", [url.path])[0], url.query)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", f"public, s-maxage={ttl}" if ttl else "no-store")
+        self.send_header("Cache-Control", f"public, s-maxage={ttl}, stale-while-revalidate={ttl}" if ttl else "no-store")
         self.end_headers()
         self.wfile.write(json.dumps(body).encode())

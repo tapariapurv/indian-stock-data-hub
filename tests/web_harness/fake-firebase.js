@@ -12,4 +12,4 @@ export const setDoc = async (r, v) => { JSON.stringify(v, (k, x) => { if (x === 
 let n = 0; export const addDoc = async (c, v) => { const id = "d" + ++n; await setDoc({path: c.path, id}, v); return {id, path: c.path}; };
 export const deleteDoc = async r => { delete (store[r.path] || {})[r.id]; };
 export const where = (f, o, v) => ({f, v}); export const query = (c, w) => ({path: c.path, w});
-export const getDocs = async q => { const ids = Object.keys(store[q.path] || {}).filter(id => !q.w || store[q.path][id][q.w.f] === q.w.v); return {size: ids.length, docs: ids.map(id => snap(q.path, id))}; };
+export const getDocs = async q => { const ids = Object.keys(store[q.path] || {}).filter(id => !q.w || store[q.path][id][q.w.f] === q.w.v); return {metadata: {fromCache: Boolean(window.__offline)}, size: ids.length, docs: ids.map(id => snap(q.path, id))}; };
