@@ -21,9 +21,22 @@ const h = (tag, props = {}, ...kids) => {
   return e;
 };
 const icon = name => h("span", {class: "ms", ariaHidden: "true", textContent: name});
-const page = document.getElementById("page");
-const api = async p => { const r = await fetch("/api/" + p), b = await r.json(); if (!r.ok) throw new Error(b.error); return b; };
-const failed = e => h("p", {class: "err", textContent: e.message});
+const shell = document.getElementById("page");
+const freshPage = () => { const el = document.createElement("div"); shell.replaceChildren(el); return el; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+// Reads are safe to repeat, so a dropped connection or a busy server gets two more tries.
+const api = async p => {
+  for (let tries = 0; ; tries++) {
+    let r;
+    try { r = await fetch("/api/" + p); } catch (e) { if (tries < 2) { await wait(500 * (tries + 1)); continue; } throw e; }
+    if ((r.status >= 500 || r.status === 429) && tries < 2) { await wait(500 * (tries + 1)); continue; }
+    let b; try { b = await r.json(); } catch { throw new Error("The server sent back something unexpected. Try again in a minute."); }
+    if (!r.ok) throw new Error(b.error || "That didn't work. Try again in a minute.");
+    return b;
+  }
+};
+const plainError = e => /failed to fetch|networkerror|load failed|offline|unavailable/i.test(e.message) ? "Couldn't reach the server. Check your connection and try again." : e.message;
+const failed = e => h("p", {class: "err", textContent: plainError(e)});
 function toast(text) {
   const t = document.getElementById("toast");
   t.textContent = text; t.classList.add("show");
@@ -54,7 +67,7 @@ function spark(values) {
   const lo = Math.min(...values), hi = Math.max(...values);
   const line = document.createElementNS(svg.namespaceURI, "polyline");
   line.setAttribute("points", values.map((v, i) => `${(i / Math.max(values.length - 1, 1) * 150).toFixed(1)},${(24 - (v - lo) / (hi - lo || 1) * 22).toFixed(1)}`).join(" "));
-  line.setAttribute("fill", "none"); line.setAttribute("stroke", "#1F4E79"); line.setAttribute("stroke-width", "1.5");
+  line.setAttribute("vector-effect", "non-scaling-stroke"); line.setAttribute("fill", "none"); line.setAttribute("stroke", "#1F4E79"); line.setAttribute("stroke-width", "1.5");
   const area = document.createElementNS(svg.namespaceURI, "polygon");
   area.setAttribute("points", `0,26 ${line.getAttribute("points")} 150,26`); area.setAttribute("fill", "#1F4E79"); area.setAttribute("fill-opacity", ".1");
   svg.append(area, line);
@@ -100,6 +113,7 @@ function openCompany(c) {
 
 // --- pages -------------------------------------------------------------------
 async function home() {
+  const page = freshPage();
   const hour = new Date().getHours();
   page.replaceChildren(h("h1", {textContent: "Good " + (hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening")}),
     h("p", {class: "muted", textContent: new Date().toLocaleDateString("en-IN", {weekday: "long", day: "2-digit", month: "long"})}),
@@ -117,7 +131,7 @@ async function home() {
   }
   await checkAlerts(rows);
   const quotes = await Promise.all(rows.map(r => quote(r.screener_id).catch(() => null))), latest = await latestAll();
-  const notes = (await events()).filter(e => e.ts > Date.now() - 7 * 864e5).slice(0, 5);
+  const notes = [...new Map((await events()).filter(e => !e.read && e.ts > Date.now() - 7 * 864e5).reverse().map(e => [e.ticker, e])).values()].reverse().slice(0, 5);  // the newest per stock
   let value = 0, invested = 0, day = 0, up = 0;
   rows.forEach((r, i) => {
     const q = quotes[i];
@@ -129,14 +143,14 @@ async function home() {
   if (invested) money.append(metric("Gain or loss so far", inr(value - invested, true), delta(`${((value / invested - 1) * 100).toFixed(1)}%`, value - invested)));
   money.append(metric("Your stocks", String(rows.length), delta(`${up} up today`, 0)));
   const order = rows.map((r, i) => [r, quotes[i]]).sort((a, b) => a[0].name.localeCompare(b[0].name));
-  body.replaceWith(money, notes.length ? h("div", {class: "card"}, h("b", {}, icon("priority_high"), " Needs your attention"), notes.map(e => h("div", {class: "row"}, h("span", {class: "grow"}, h("b", {textContent: e.ticker}), " · " + e.title.replace(`${e.ticker}: `, "")), rows.some(r => r.ticker === e.ticker) ? h("button", {class: "btn link", onclick: () => openCompany(rows.find(r => r.ticker === e.ticker))}, icon("arrow_forward"), "Open") : null))) : "", h("p", {}, h("b", {textContent: "Your stocks"}), h("span", {class: "muted", textContent: " · click a stock to open it"})),
+  body.replaceWith(money, notes.length ? h("div", {class: "card attention"}, h("div", {class: "row"}, h("h4", {class: "grow"}, icon("notifications"), " Needs your attention"), h("span", {class: "badge orange", textContent: `${notes.length} new`}), h("a", {href: "#/portfolio", onclick: () => { pfSection = "Alerts"; }}, "See all ", icon("arrow_forward"))), h("div", {class: "unread-only"}, notes.map(eventRow))) : "", h("p", {}, h("b", {textContent: "Your stocks"}), h("span", {class: "muted", textContent: " · click a stock to open it"})),
     h("div", {class: "scroll"}, h("table", {},
       h("thead", {}, h("tr", {}, ["Company", "Symbol", "Price", "Today", "Last month", "AI view"].map(t => h("th", {textContent: t})))),
       h("tbody", {}, order.map(([r, q]) => h("tr", {class: "click", tabIndex: 0, onclick: () => openCompany(r), onkeydown: e => { if (e.key === "Enter") openCompany(r); }},
         h("td", {textContent: r.name}), h("td", {textContent: r.ticker}),
         h("td", {class: "num", textContent: q ? inr(q.price, false, 2) : "—"}),
         h("td", {class: "num " + (q ? tone(q.pct) : ""), textContent: q ? `${q.pct >= 0 ? "+" : ""}${q.pct.toFixed(2)}%` : "—"}),
-        h("td", {}, q ? spark(q.spark) : "—"), h("td", {class: {Positive: "up", Cautious: "down"}[latest[r.ticker]?.verdict] || "muted", textContent: VIEW[latest[r.ticker]?.verdict]?.[0] || "Not checked yet"})))))));
+        h("td", {class: "chart"}, q ? spark(q.spark) : "—"), h("td", {class: {Positive: "up", Cautious: "down"}[latest[r.ticker]?.verdict] || "muted", textContent: VIEW[latest[r.ticker]?.verdict]?.[0] || "Not checked yet"})))))));
 }
 
 function popover(label, iconName, build) {
@@ -146,6 +160,7 @@ function popover(label, iconName, build) {
 }
 
 async function stock(ticker) {
+  const page = freshPage();
   const saved = JSON.parse(sessionStorage.getItem("company") || "null");
   const owned = user ? await holdings() : [];
   const held = owned.find(r => r.ticker === ticker);
@@ -338,7 +353,18 @@ async function checkAlerts(rows) {
     } catch { /* tried again on the next visit */ }
   }
 }
-const events = async () => (await getDocs(mine("events"))).docs.map(d => d.data()).sort((a, b) => b.ts - a.ts);
+const events = async () => (await getDocs(mine("events"))).docs.map(d => ({...d.data(), _ref: d.ref})).sort((a, b) => b.ts - a.ts);
+const EVENT_ICON = {price: "notifications_active", verdict: "psychology", filing: "description", guidance: "handshake"};
+const sinceText = ts => { const m = (Date.now() - ts) / 6e4; return m < 1 ? "Just now" : m < 60 ? `${Math.floor(m)} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : m < 2880 ? "Yesterday" : m < 10080 ? `${Math.floor(m / 1440)} days ago` : new Date(ts).toLocaleDateString("en-IN", {day: "2-digit", month: "short"}); };
+const markRead = e => { const {_ref, ...rest} = e; return setDoc(_ref, {...rest, read: true}); };
+// One message: what happened, how long ago, and a way to open the company or clear it.
+function eventRow(e) {
+  const row = h("div", {class: "event" + (e.read ? "" : " new")}, h("span", {class: "event-ic"}, icon(EVENT_ICON[e.kind] || "notifications")),
+    h("div", {class: "event-text"}, h("div", {}, h("b", {textContent: e.ticker || "Update"}), h("span", {class: "muted", textContent: "  ·  " + sinceText(e.ts)})), h("div", {textContent: String(e.title || "").replace(`${e.ticker}: `, "").replace(/^./, c => c.toUpperCase())}), e.body ? h("div", {class: "muted", textContent: e.body}) : null),
+    h("div", {class: "event-actions"}, e.ticker ? h("button", {class: "btn link", onclick: () => openCompany({ticker: e.ticker, name: e.ticker})}, icon("arrow_forward"), "Open") : null,
+      e.read ? null : h("button", {class: "btn link", ariaLabel: "Mark as read", title: "Mark as read", onclick: async ev => { const box = row.parentNode; await markRead(e); e.read = true; row.classList.remove("new"); ev.target.closest("button").remove(); if (box?.classList.contains("unread-only")) { row.remove(); if (!box.querySelector(".event")) box.closest(".card").remove(); } }}, icon("check"))));
+  return row;
+}
 function download(bytes, name, type) {
   const a = h("a", {href: URL.createObjectURL(new Blob([bytes], {type})), download: name}); a.click(); URL.revokeObjectURL(a.href);
 }
@@ -468,6 +494,7 @@ const pastChecks = ticker => ["Past checks", "history", async el => {
 
 // --- Research ----------------------------------------------------------------
 async function research() {
+  const page = freshPage();
   const m = await meta(), chosen = new Set(prefs.categories || m.categories);
   const tickers = h("input", {value: prefs.tickers, placeholder: "Their stock symbols, separated by commas — e.g. TCS, INFY, RELIANCE", ariaLabel: "Companies"});
   const when_ = h("select", {ariaLabel: "How far back"}, m.timeframes.map(t => h("option", {value: t, selected: t === prefs.timeframe, textContent: t})));
@@ -541,6 +568,7 @@ async function syncTrades(value = 0) {
 }
 function capBucket(cr) { return cr === null || cr === undefined ? "Unknown" : cr >= 100000 ? "Large cap" : cr >= 30000 ? "Mid cap" : "Small cap"; }
 async function portfolioPage() {
+  const page = freshPage();
   const accounts = await accountsList(), names = Object.fromEntries(accounts.map(a => [a.id, a.name]));
   if (pfView !== "all" && !names[pfView]) pfView = "all";
   const name = h("input", {placeholder: "e.g. Long-term, Trading, Mom's account"});
@@ -643,11 +671,11 @@ async function portfolioPage() {
         h("p", {class: "muted", textContent: `${total ? "Sized by what each holding is worth" : "Every stock counted equally"}. Green boxes are up today, red are down. Stocks not checked yet show as Unknown.`}));
     },
     Alerts: async el => {
-      const docs = (await getDocs(mine("events"))).docs.sort((a, b) => b.data().ts - a.data().ts), rules = (await getDocs(mine("alerts"))).docs;
-      el.append(h("div", {class: "row"}, h("b", {class: "grow", textContent: `Messages · ${unread} new`}), unread ? h("button", {class: "btn link", onclick: async () => { for (const d of docs) if (!d.data().read) await setDoc(d.ref, {...d.data(), read: true}); route(); }}, icon("done_all"), "Mark all read") : null));
-      if (!docs.length) el.append(h("p", {class: "muted", textContent: "Nothing yet. You'll be told here when the AI's view changes, a company publishes something important, it breaks a promise, or a price you're watching is reached."}));
-      else el.append(h("div", {class: "card"}, docs.slice(0, 60).map(d => { const e = d.data(); return h("p", {}, e.read ? "" : h("span", {class: "dot", ariaLabel: "New"}), h("b", {textContent: e.title}), h("span", {class: "muted", textContent: ` · ${when(e.ts)}`}), e.body ? h("span", {class: "muted", style: "display:block", textContent: e.body}) : null); })));
-      el.append(h("h3", {style: "margin-top:16px", textContent: "Price alerts"}), h("p", {class: "muted", textContent: "Checked while this site is open, and once each weekday after the market closes using the closing price."}), ...rules.map(d => { const r = d.data(); return h("div", {class: "row"}, h("span", {class: "grow"}, h("b", {textContent: r.ticker}), ` ${r.op} ${inr(r.level, false, 2)} `, h("span", {class: "badge " + (r.fired ? "orange" : ""), textContent: r.fired ? "reached" : "watching"})), h("button", {class: "btn link", ariaLabel: "Delete alert", onclick: async () => { await deleteDoc(d.ref); route(); }}, icon("delete"))); }), rules.length ? "" : h("p", {class: "muted", textContent: "None yet. Set one from a company's page."}));
+      const all = await events(), rules = (await getDocs(mine("alerts"))).docs, fresh = all.filter(e => !e.read);
+      el.append(h("div", {class: "card"}, h("div", {class: "row"}, h("h4", {class: "grow"}, icon("inbox"), " Messages"), fresh.length ? h("span", {class: "badge orange", textContent: `${fresh.length} new`}) : null, fresh.length ? h("button", {class: "btn link", onclick: async () => { for (const e of fresh) await markRead(e); route(); }}, icon("done_all"), "Mark all read") : null),
+        all.length ? h("div", {}, all.slice(0, 60).map(eventRow)) : h("p", {class: "muted", textContent: "Nothing yet. You'll be told here when the AI's view changes, a company publishes something important, it breaks a promise, or a price you're watching is reached."})));
+      el.append(h("div", {class: "card"}, h("h4", {}, icon("notifications_active"), " Price alerts"), h("p", {class: "muted", style: "margin:4px 0 0", textContent: "Checked while this site is open, and once each weekday after the market closes using the closing price."}),
+        rules.length ? h("div", {}, rules.map(d => { const r = d.data(); return h("div", {class: "event" + (r.fired ? "" : " new")}, h("span", {class: "event-ic"}, icon(r.fired ? "check" : "visibility")), h("div", {class: "event-text"}, h("div", {}, h("b", {textContent: r.ticker}), ` ${r.op} ${inr(r.level, false, 2)}`), h("span", {class: "badge " + (r.fired ? "green" : ""), textContent: r.fired ? "Reached" : "Watching"})), h("div", {class: "event-actions"}, h("button", {class: "btn link", ariaLabel: `Delete the ${r.ticker} alert`, title: "Delete this alert", onclick: async () => { await deleteDoc(d.ref); route(); }}, icon("delete")))); })) : h("p", {class: "muted", textContent: "None yet. Set one from a company's page."})));
     },
     "Weekly summary": async el => {
       const week = Date.now() - 7 * 864e5, ev = (await events()).filter(e => e.ts > week), wk = tick.filter(t => quotes[t]?.spark?.length > 5).map(t => { const c = quotes[t].spark; return [t, (c.at(-1) / c.at(-6) - 1) * 100]; }).sort((a, b) => b[1] - a[1]);
@@ -664,6 +692,7 @@ async function portfolioPage() {
 // --- Ask AI --------------------------------------------------------------------
 let chatId = null;
 async function askPage() {
+  const page = freshPage();
   const docs = (await getDocs(mine("chats"))).docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const current = docs.find(c => c.id === chatId), [held, known] = await Promise.all([holdings(), latestAll()]), tickers = [...new Set(held.map(r => r.ticker))];
   let messages = current?.messages || [];
@@ -705,6 +734,7 @@ async function askPage() {
 
 // --- Screener --------------------------------------------------------------------
 async function screenerPage() {
+  const page = freshPage();
   const m = await meta(), saved = (await getDoc(doc(mine("settings"), "screens"))).data() || {};
   const q = h("textarea", {rows: 5, ariaLabel: "Search", value: m.presets["Cheap and profitable"], placeholder: "Market Cap > 5000 AND P/E < 20"});
   const sme = h("input", {type: "checkbox", style: "width:auto", onchange: () => run()}), out = h("div"), remove = h("span");
@@ -731,6 +761,7 @@ async function screenerPage() {
 
 // --- Compare ---------------------------------------------------------------------
 async function comparePage() {
+  const page = freshPage();
   const held = await holdings(), picked = [...new Map(held.map(r => [r.ticker, r])).values()].slice(0, 3), out = h("div"), chips = h("div", {class: "pills"});
   const list = h("ul", {class: "hits", hidden: true}), box = h("input", {type: "search", placeholder: "Pick two to four companies", ariaLabel: "Add a company"});
   const num = v => { const n = parseFloat(String(v ?? "").replace(/[₹,%\s]|Cr\.?/g, "")); return Number.isFinite(n) ? n : null; };
@@ -761,6 +792,7 @@ async function comparePage() {
 
 // --- Archive -----------------------------------------------------------------------
 async function archivePage() {
+  const page = freshPage();
   const m = await meta(), latest = await latestAll(), held = await holdings();
   const known = [...new Set([...Object.keys(latest), ...held.map(r => r.ticker)])].sort();
   const t = h("input", {value: known.slice(0, 1).join(""), placeholder: "Company symbols separated by commas, e.g. TCS, INFY", ariaLabel: "Companies"}), q = h("input", {type: "search", placeholder: "What are you looking for? e.g. new factory, debt, dividend", ariaLabel: "Search words"}), out = h("div"), chosen = new Set(), limit = h("input", {type: "number", min: 1, max: 100, value: 40, ariaLabel: "Most results per company"});
@@ -780,6 +812,7 @@ async function archivePage() {
 // --- History ---------------------------------------------------------------------
 let histTicker = null, histMeasure = null;
 async function historyPage(id) {
+  const page = freshPage();
   page.replaceChildren(h("h1", {textContent: "History"}), h("p", {class: "muted", textContent: "Every check the app has made is kept, so you can look back and see how a company has changed."}));
   const rows = (await getDocs(mine("runs"))).docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => b.ts - a.ts);
   if (!rows.length) { page.append(h("div", {class: "info"}, icon("info"), " Nothing here yet. Look into a company and it will appear here.")); return; }
@@ -811,6 +844,7 @@ async function historyPage(id) {
 
 // --- Settings --------------------------------------------------------------------
 async function settingsPage() {
+  const page = freshPage();
   const [providers, m] = await Promise.all([api("providers"), meta()]);
   const num = (v, min, max, step = 1) => h("input", {type: "number", value: v, min, max, step});
   const check = v => h("input", {type: "checkbox", class: "switch", checked: Boolean(v)});
@@ -883,28 +917,25 @@ function drawNav(current) {
   nav.replaceChildren(...PAGES.filter(visible).map(link), h("div", {class: "more"}, h("button", {class: "menu-btn", ariaExpanded: "false", onclick: e => { pop.hidden = !pop.hidden; e.currentTarget.ariaExpanded = String(!pop.hidden); }}, "More", icon("expand_more")), pop));
   nav.hidden = false;
 }
+let routeId = 0;
 async function route() {
-  const [, name = slug(prefs.home || "Home"), arg] = location.hash.split("/");
+  const [, name = slug(prefs.home || "Home"), arg] = location.hash.split("/"), id = ++routeId;
   document.body.classList.toggle("side", name === "ask-ai"); document.body.classList.toggle("sidenav", prefs.nav === "side");
   drawNav(name);
-  try {
-    if (name === "home") await home();
-    else if (name === "stock") await stock(arg ? decodeURIComponent(arg).toUpperCase() : null);
-    else if (name === "research") await research();
-    else if (name === "portfolio") await portfolioPage();
-    else if (name === "ask-ai") await askPage();
-    else if (name === "screener") await screenerPage();
-    else if (name === "compare") await comparePage();
-    else if (name === "archive") await archivePage();
-    else if (name === "history") await historyPage(arg);
-    else if (name === "settings") await settingsPage();
-    else await home();
-  } catch (e) { page.replaceChildren(failed(e)); }
+  const open = () => name === "home" ? home() : name === "stock" ? stock(arg ? decodeURIComponent(arg).toUpperCase() : null) : name === "research" ? research() : name === "portfolio" ? portfolioPage() : name === "ask-ai" ? askPage() : name === "screener" ? screenerPage() : name === "compare" ? comparePage() : name === "archive" ? archivePage() : name === "history" ? historyPage(arg) : name === "settings" ? settingsPage() : home();
+  for (let tries = 0; ; tries++) {
+    try { await open(); return; } catch (e) {
+      if (id !== routeId) return;  // they've moved on to another page
+      if (tries < 1) { await wait(800); if (id !== routeId) return; continue; }
+      shell.replaceChildren(h("div", {class: "card problem"}, icon("cloud_off"), h("div", {}, h("b", {textContent: "This page didn't load"}), h("p", {class: "muted", textContent: plainError(e)}), h("button", {class: "btn", onclick: route}, icon("refresh"), "Try again"))));
+      return;
+    }
+  }
 }
 function signInPage() {
   document.getElementById("nav").hidden = true; document.body.classList.remove("side", "sidenav");
   const note = h("p", {class: "err"});
-  page.replaceChildren(h("div", {class: "signin"}, h("h1", {textContent: "Indian Stock Data Hub"}),
+  shell.replaceChildren(h("div", {class: "signin"}, h("h1", {textContent: "Indian Stock Data Hub"}),
     h("p", {class: "muted", textContent: "Sign in to see your portfolio, alerts and saved analyses."}),
     h("button", {class: "btn primary", textContent: "Continue with Google", onclick: () => signInWithPopup(auth, new GoogleAuthProvider()).catch(e => { note.textContent = e.code === "auth/popup-closed-by-user" ? "" : "Sign-in didn't work. Please try again."; })}), note));
 }
@@ -923,4 +954,4 @@ async function autoRefresh() {
   } finally { refreshing = false; }
 }
 window.addEventListener("hashchange", () => { if (user) route(); });
-onAuthStateChanged(auth, async u => { user = u; if (!u) return signInPage(); await loadPrefs().catch(() => {}); route(); autoRefresh(); });
+onAuthStateChanged(auth, async u => { user = u; if (!u) return signInPage(); await loadPrefs().catch(() => wait(800).then(loadPrefs)).catch(() => {}); route(); autoRefresh(); });

@@ -176,6 +176,15 @@ def test_build_copies_every_shared_module():
         assert used <= set(listed), (source.name, used - set(listed))
 
 
+def test_page_furniture_is_served_from_this_site():
+    import re
+    public = path.parents[1] / "public"
+    html = (public / "index.html").read_text()
+    for local in re.findall(r'(?:href|src)="/([^"]+)"', html):
+        assert (public / local).is_file(), local
+    assert 'rel="icon"' in html and "jsdelivr" not in html
+
+
 def test_nan_becomes_null():
     assert api.clean({"a": [float("nan"), 1.0], "b": float("inf")}) == {"a": [None, 1.0], "b": None}
 
