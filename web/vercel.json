@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "for m in core archive llm settings portfolio screener disclosures exports alerts runtime; do cp ../$m.py .; done",
+  "regions": ["bom1"],
+  "functions": { "api/index.py": { "maxDuration": 300 } },
+  "crons": [{ "path": "/api/cron", "schedule": "30 10 * * 1-5" }],
+  "rewrites": [{ "source": "/api/:route", "destination": "/api/index?route=:route" }]
+}

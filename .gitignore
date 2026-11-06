@@ -24,3 +24,6 @@ Thumbs.db
 
 # The autostart LaunchAgent's log
 autostart.log
+
+# Vercel CLI
+.vercel
