@@ -354,3 +354,9 @@ Issues and pull requests are welcome. Before opening a PR, run the four test scr
 ## License
 
 [MIT](LICENSE) © 2026 Purv Taparia
+
+## The hosted website
+
+This branch also holds a hosted version in `web/`, on [Vercel](https://indian-stock-data-hub.vercel.app). The local app is unaffected: `streamlit run app.py` works the same on every branch.
+
+Vercel deploys the `web-version` branch automatically on each push, and ignores every other branch. It builds from `web/` and copies the shared modules in; `web/vercel.json` lists them, and `tests/test_web.py` fails if one is missing.
